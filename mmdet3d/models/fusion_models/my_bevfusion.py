@@ -3,17 +3,7 @@ from typing import Any, Dict
 import torch
 import cv2
 from mmcv.runner import auto_fp16, force_fp32
-from torch import nn
-from torch._tensor import Tensor
 from torch.nn import functional as F
-
-from mmdet3d.models.builder import (
-    build_backbone,
-    build_fuser,
-    build_head,
-    build_neck,
-    build_vtransform,
-)
 
 from mmdet3d.models import FUSIONMODELS
 from mmdet3d.models.fusion_models.bevfusion import BEVFusion
