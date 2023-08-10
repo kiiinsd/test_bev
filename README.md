@@ -1,4 +1,4 @@
-代码环境部署[参考1](https://blog.csdn.net/h904798869/article/details/132210022?csdn_share_tail=%7B%22type%22%3A%22blog%22%2C%22rType%22%3A%22article%22%2C%22rId%22%3A%22132210022%22%2C%22source%22%3A%22h904798869%22%7D#t8) 或者 [参考2](https://gitee.com/linClubs/bevfusion/blob/master/build_run.md)
+代码环境部署[参考1](https://blog.csdn.net/h904798869/article/details/132210022) 或者 [参考2](https://gitee.com/linClubs/bevfusion/blob/master/build_run.md)
 
 
 
