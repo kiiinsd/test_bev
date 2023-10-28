@@ -1,6 +1,6 @@
 代码环境部署[参考1](https://blog.csdn.net/h904798869/article/details/132210022) 或者 [参考2](https://gitee.com/linClubs/bevfusion/blob/master/build_run.md)
 
-
+nus-mini数据集和权重文件[百度网盘下载地址](https://gitee.com/linClubs/bevfusion/issues/I8AOLL)
 
 
 ---
