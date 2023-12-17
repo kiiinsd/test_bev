@@ -1,5 +1,13 @@
+build/
 data/
 **/__pycache__
 .vscode/
-pretrained/
 *.egg-info/
+runs/
+train_result/
+pretrained
+*.o
+*.cpython-38-x86_64-linux-gnu.so
+*.so
+*.log
+*.log.json
