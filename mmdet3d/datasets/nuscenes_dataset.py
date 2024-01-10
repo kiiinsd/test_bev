@@ -137,6 +137,8 @@ class NuScenesDataset(Custom3DDataset):
         test_mode=False,
         eval_version="detection_cvpr_2019",
         use_valid_flag=False,
+        sequential=False,
+        adj_frame_num=0,
     ) -> None:
         self.load_interval = load_interval
         self.use_valid_flag = use_valid_flag
@@ -165,6 +167,8 @@ class NuScenesDataset(Custom3DDataset):
                 use_map=False,
                 use_external=False,
             )
+        self.sequential = sequential
+        self.adj_frame_num = adj_frame_num
 
     def get_cat_ids(self, idx):
         """Get category distribution of single scene.
@@ -277,6 +281,24 @@ class NuScenesDataset(Custom3DDataset):
         annos = self.get_ann_info(index)
         data["ann_info"] = annos
         return data
+
+    def my_get_data_info(self, index: int) -> Dict[str, Any]:
+        data = self.get_data_info(index)
+
+        if self.sequential:
+            index_list = []
+            adj_id_list = list(range(1, self.adj_frame_num+1, 1))
+            for select_id in adj_id_list:
+                select_id = max(index - select_id, 0)
+                index_list.append(select_id)
+
+            adj_data_list = []
+            for data_index in index_list:
+                adj_data_list.append(self.get_data_info(data_index))
+            data.update(dict(adjacent=adj_data_list))
+
+        return data
+
 
     def get_ann_info(self, index):
         """Get annotation info according to the given index.

@@ -10,8 +10,10 @@ def nuscenes_data_prep(
     version,
     dataset_name,
     out_dir,
+    adj_frame_num,
     max_sweeps=10,
     load_augmented=None,
+    sequential=None,
 ):
     """Prepare data related to nuScenes dataset.
 
@@ -46,8 +48,10 @@ def nuscenes_data_prep(
         dataset_name,
         root_path,
         info_prefix,
+        adj_frame_num,
         f"{out_dir}/{info_prefix}_infos_train.pkl",
         load_augmented=load_augmented,
+        sequential=sequential,
     )
 
 
@@ -86,6 +90,8 @@ parser.add_argument("--virtual", default=False, action="store_true")
 parser.add_argument(
     "--workers", type=int, default=4, help="number of threads to be used"
 )
+parser.add_argument("--sequential", default=False)
+parser.add_argument("--adj_frame_num", type=int, default=1)
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -104,8 +110,10 @@ if __name__ == "__main__":
             version=train_version,
             dataset_name="NuScenesDataset",
             out_dir=args.out_dir,
+            adj_frame_num=args.adj_frame_num,
             max_sweeps=args.max_sweeps,
             load_augmented=load_augmented,
+            sequential=args.sequential,
         )
         test_version = f"{args.version}-test"
         nuscenes_data_prep(
@@ -114,8 +122,10 @@ if __name__ == "__main__":
             version=test_version,
             dataset_name="NuScenesDataset",
             out_dir=args.out_dir,
+            adj_frame_num=args.adj_frame_num,
             max_sweeps=args.max_sweeps,
             load_augmented=load_augmented,
+            sequential=args.sequential,
         )
     elif args.dataset == "nuscenes" and args.version == "v1.0-mini":
         train_version = f"{args.version}"
@@ -125,6 +135,8 @@ if __name__ == "__main__":
             version=train_version,
             dataset_name="NuScenesDataset",
             out_dir=args.out_dir,
+            adj_frame_num=args.adj_frame_num,
             max_sweeps=args.max_sweeps,
             load_augmented=load_augmented,
+            sequential=args.sequential,
         )
