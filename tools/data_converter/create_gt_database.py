@@ -112,7 +112,6 @@ def create_groundtruth_database(
     dataset_class_name,
     data_path,
     info_prefix,
-    adj_frame_num,
     info_path=None,
     mask_anno_path=None,
     used_classes=None,
@@ -125,7 +124,6 @@ def create_groundtruth_database(
     coors_range=None,
     with_mask=False,
     load_augmented=None,
-    sequential=None,
 ):
     """Given the raw data, generate the ground truth database.
 
@@ -153,8 +151,6 @@ def create_groundtruth_database(
         type=dataset_class_name, 
         dataset_root=data_path, 
         ann_file=info_path,
-        sequential=sequential,
-        adj_frame_num=adj_frame_num,
     )
     if dataset_class_name == "KittiDataset":
         dataset_cfg.update(

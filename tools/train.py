@@ -18,7 +18,7 @@ from mmdet3d.utils import get_root_logger, convert_sync_batchnorm, recursive_eva
 
 
 def main():
-    dist.init()
+    #dist.init()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config", metavar="FILE", help="config file")
@@ -31,7 +31,7 @@ def main():
     cfg = Config(recursive_eval(configs), filename=args.config)
 
     torch.backends.cudnn.benchmark = cfg.cudnn_benchmark
-    torch.cuda.set_device(dist.local_rank())
+    torch.cuda.set_device(0)
 
     if args.run_dir is None:
         args.run_dir = auto_set_run_dir()
@@ -77,7 +77,7 @@ def main():
         model,
         datasets,
         cfg,
-        distributed=True,
+        distributed=False,
         validate=True,
         timestamp=timestamp,
     )
