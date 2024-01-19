@@ -25,7 +25,7 @@ from .utils import noise_per_object_v3_
 @PIPELINES.register_module()
 class ImageAug3D:
     def __init__(
-        self, final_dim, resize_lim, bot_pct_lim, rot_lim, rand_flip, is_train
+        self, final_dim, resize_lim, bot_pct_lim, rot_lim, rand_flip, is_train, sequential,
     ):
         self.final_dim = final_dim
         self.resize_lim = resize_lim
@@ -33,6 +33,7 @@ class ImageAug3D:
         self.rand_flip = rand_flip
         self.rot_lim = rot_lim
         self.is_train = is_train
+        self.sequential = sequential
 
     def sample_augmentation(self, results):
         W, H = results["ori_shape"]
@@ -92,15 +93,18 @@ class ImageAug3D:
         return img, rotation, translation
 
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        imgs = data["img"]
-        new_imgs = []
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in data
+            num_frames += len(data["adjacent"])
         transforms = []
-        for img in imgs:
-            resize, resize_dims, crop, flip, rotate = self.sample_augmentation(data)
+
+        for img_id in range(len(data["curr"]["img"])):
+            resize, resize_dims, crop, flip, rotate = self.sample_augmentation(data["curr"])
             post_rot = torch.eye(2)
             post_tran = torch.zeros(2)
             new_img, rotation, translation = self.img_transform(
-                img,
+                data["curr"]["img"][img_id],
                 post_rot,
                 post_tran,
                 resize=resize,
@@ -109,24 +113,39 @@ class ImageAug3D:
                 flip=flip,
                 rotate=rotate,
             )
+            data["curr"]["img"][img_id] = new_img
+
+            if self.sequential:
+                assert "adjacent" in data
+                for frame in range(len(data["adjacent"])):
+                    new_img, _, _ = self.img_transform(
+                        data["adjacent"][frame]["img"][img_id],
+                        post_rot,
+                        post_tran,
+                        resize=resize,
+                        resize_dims=resize_dims,
+                        crop=crop,
+                        flip=flip,
+                        rotate=rotate,
+                    )
+                data["adjacent"][frame]["img"][img_id] = new_img
             transform = torch.eye(4)
             transform[:2, :2] = rotation
             transform[:2, 3] = translation
-            new_imgs.append(new_img)
             transforms.append(transform.numpy())
-        data["img"] = new_imgs
-        # update the calibration matrices
+
         data["img_aug_matrix"] = transforms
         return data
 
 
 @PIPELINES.register_module()
 class GlobalRotScaleTrans:
-    def __init__(self, resize_lim, rot_lim, trans_lim, is_train):
+    def __init__(self, resize_lim, rot_lim, trans_lim, is_train, sequential):
         self.resize_lim = resize_lim
         self.rot_lim = rot_lim
         self.trans_lim = trans_lim
         self.is_train = is_train
+        self.sequential = sequential
 
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
         transform = np.eye(4).astype(np.float32)
@@ -137,10 +156,17 @@ class GlobalRotScaleTrans:
             translation = np.array([random.normal(0, self.trans_lim) for i in range(3)])
             rotation = np.eye(3)
 
-            if "points" in data:
-                data["points"].rotate(-theta)
-                data["points"].translate(translation)
-                data["points"].scale(scale)
+            if "points" in data["curr"]:
+                data["curr"]["points"].rotate(-theta)
+                data["curr"]["points"].translate(translation)
+                data["curr"]["points"].scale(scale)
+
+                if self.sequential:
+                    assert "adjacent" in data
+                    for frame in range(len(data["adjacent"])):
+                        data["adjacent"][frame]["points"].rotate(-theta)
+                        data["adjacent"][frame]["points"].translate(translation)
+                        data["adjacent"][frame]["points"].scale(scale)
 
             gt_boxes = data["gt_bboxes_3d"]
             rotation = rotation @ gt_boxes.rotate(theta).numpy()
@@ -162,6 +188,7 @@ class GridMask:
         use_h,
         use_w,
         max_epoch,
+        sequential,
         rotate=1,
         offset=False,
         ratio=0.5,
@@ -180,6 +207,7 @@ class GridMask:
         self.epoch = None
         self.max_epoch = max_epoch
         self.fixed_prob = fixed_prob
+        self.sequential = sequential
 
     def set_epoch(self, epoch):
         self.epoch = epoch
@@ -192,59 +220,74 @@ class GridMask:
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        imgs = results["img"]
-        h = imgs[0].shape[0]
-        w = imgs[0].shape[1]
-        self.d1 = 2
-        self.d2 = min(h, w)
-        hh = int(1.5 * h)
-        ww = int(1.5 * w)
-        d = np.random.randint(self.d1, self.d2)
-        if self.ratio == 1:
-            self.l = np.random.randint(1, d)
-        else:
-            self.l = min(max(int(d * self.ratio + 0.5), 1), d - 1)
-        mask = np.ones((hh, ww), np.float32)
-        st_h = np.random.randint(d)
-        st_w = np.random.randint(d)
-        if self.use_h:
-            for i in range(hh // d):
-                s = d * i + st_h
-                t = min(s + self.l, hh)
-                mask[s:t, :] *= 0
-        if self.use_w:
-            for i in range(ww // d):
-                s = d * i + st_w
-                t = min(s + self.l, ww)
-                mask[:, s:t] *= 0
+        
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in results
+            num_frames += len(results["adjacent"])
+        for frame in range(num_frames):
+            if frame == 0:
+                imgs = results["curr"]["img"]
+            else:
+                imgs = results["adjacent"][frame-1]["img"]
+            h = imgs[0].shape[0]
+            w = imgs[0].shape[1]
+            self.d1 = 2
+            self.d2 = min(h, w)
+            hh = int(1.5 * h)
+            ww = int(1.5 * w)
+            d = np.random.randint(self.d1, self.d2)
+            if self.ratio == 1:
+                self.l = np.random.randint(1, d)
+            else:
+                self.l = min(max(int(d * self.ratio + 0.5), 1), d - 1)
+            mask = np.ones((hh, ww), np.float32)
+            st_h = np.random.randint(d)
+            st_w = np.random.randint(d)
+            if self.use_h:
+                for i in range(hh // d):
+                    s = d * i + st_h
+                    t = min(s + self.l, hh)
+                    mask[s:t, :] *= 0
+            if self.use_w:
+                for i in range(ww // d):
+                    s = d * i + st_w
+                    t = min(s + self.l, ww)
+                    mask[:, s:t] *= 0
 
-        r = np.random.randint(self.rotate)
-        mask = Image.fromarray(np.uint8(mask))
-        mask = mask.rotate(r)
-        mask = np.asarray(mask)
-        mask = mask[
-            (hh - h) // 2 : (hh - h) // 2 + h, (ww - w) // 2 : (ww - w) // 2 + w
-        ]
+            r = np.random.randint(self.rotate)
+            mask = Image.fromarray(np.uint8(mask))
+            mask = mask.rotate(r)
+            mask = np.asarray(mask)
+            mask = mask[
+                (hh - h) // 2 : (hh - h) // 2 + h, (ww - w) // 2 : (ww - w) // 2 + w
+            ]
 
-        mask = mask.astype(np.float32)
-        mask = mask[:, :, None]
-        if self.mode == 1:
-            mask = 1 - mask
+            mask = mask.astype(np.float32)
+            mask = mask[:, :, None]
+            if self.mode == 1:
+                mask = 1 - mask
 
-        # mask = mask.expand_as(imgs[0])
-        if self.offset:
-            offset = torch.from_numpy(2 * (np.random.rand(h, w) - 0.5)).float()
-            offset = (1 - mask) * offset
-            imgs = [x * mask + offset for x in imgs]
-        else:
-            imgs = [x * mask for x in imgs]
+            # mask = mask.expand_as(imgs[0])
+            if self.offset:
+                offset = torch.from_numpy(2 * (np.random.rand(h, w) - 0.5)).float()
+                offset = (1 - mask) * offset
+                imgs = [x * mask + offset for x in imgs]
+            else:
+                imgs = [x * mask for x in imgs]
 
-        results.update(img=imgs)
+            if frame == 0:
+                results["curr"].update(img=imgs)
+            else:
+                results["adjacent"][frame-1].update(img=imgs)
         return results
 
 
 @PIPELINES.register_module()
 class RandomFlip3D:
+    def __init__(self, sequential) -> None:
+        self.sequential = sequential
+
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
         flip_horizontal = random.choice([0, 1])
         flip_vertical = random.choice([0, 1])
@@ -252,8 +295,12 @@ class RandomFlip3D:
         rotation = np.eye(3)
         if flip_horizontal:
             rotation = np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]]) @ rotation
-            if "points" in data:
-                data["points"].flip("horizontal")
+            if "points" in data["curr"]:
+                data["curr"]["points"].flip("horizontal")
+                if self.sequential:
+                    assert "adjacent" in data
+                    for frame in range(len(data["adjacent"])):
+                        data["adjacent"][frame]["points"].flip("horizontal")
             if "gt_bboxes_3d" in data:
                 data["gt_bboxes_3d"].flip("horizontal")
             if "gt_masks_bev" in data:
@@ -261,8 +308,12 @@ class RandomFlip3D:
 
         if flip_vertical:
             rotation = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]]) @ rotation
-            if "points" in data:
-                data["points"].flip("vertical")
+            if "points" in data["curr"]:
+                data["curr"]["points"].flip("vertical")
+                if self.sequential:
+                    assert "adjacent" in data
+                    for frame in range(len(data["adjacent"])):
+                        data["adjacent"][frame]["points"].flip("vertical")
             if "gt_bboxes_3d" in data:
                 data["gt_bboxes_3d"].flip("vertical")
             if "gt_masks_bev" in data:
@@ -445,8 +496,14 @@ class FrameDropout:
 
 @PIPELINES.register_module()
 class PointShuffle:
+    def __init__(self, sequential) -> None:
+        self.sequential = sequential
     def __call__(self, data):
-        data["points"].shuffle()
+        data["curr"]["points"].shuffle()
+        if self.sequential:
+            assert "adjacent" in data
+            for frame in range(len(data["adjacent"])):
+                data["adjacent"][frame]["points"].shuffle()
         return data
 
 
@@ -507,8 +564,9 @@ class PointsRangeFilter:
         point_cloud_range (list[float]): Point cloud range.
     """
 
-    def __init__(self, point_cloud_range):
+    def __init__(self, point_cloud_range, sequential):
         self.pcd_range = np.array(point_cloud_range, dtype=np.float32)
+        self.sequential = sequential
 
     def __call__(self, data):
         """Call function to filter points by the range.
@@ -518,10 +576,22 @@ class PointsRangeFilter:
             dict: Results after filtering, 'points', 'pts_instance_mask' \
                 and 'pts_semantic_mask' keys are updated in the result dict.
         """
-        points = data["points"]
-        points_mask = points.in_range_3d(self.pcd_range)
-        clean_points = points[points_mask]
-        data["points"] = clean_points
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in data
+            num_frames += len(data["adjacent"])
+        
+        for frame in range(num_frames):
+            if frame == 0:
+                points = data["curr"]["points"]
+            else:
+                points = data["adjacent"][frame-1]["points"]
+            points_mask = points.in_range_3d(self.pcd_range)
+            clean_points = points[points_mask]
+            if frame == 0:
+                data["curr"]["points"] = clean_points
+            else:
+                data["adjacent"][frame-1]["points"] = clean_points
         return data
 
 
@@ -901,7 +971,7 @@ class ImagePad:
 
 @PIPELINES.register_module()
 class ImageNormalize:
-    def __init__(self, mean, std):
+    def __init__(self, mean, std, sequential):
         self.mean = mean
         self.std = std
         self.compose = torchvision.transforms.Compose(
@@ -910,9 +980,15 @@ class ImageNormalize:
                 torchvision.transforms.Normalize(mean=mean, std=std),
             ]
         )
+        self.sequential = sequential
 
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        data["img"] = [self.compose(img) for img in data["img"]]
+        data["curr"]["img"] = [self.compose(img) for img in data["curr"]["img"]]
+        if self.sequential:
+            assert "adjacent" in data
+            for frame in range(len(data["adjacent"])):
+                data["adjacent"][frame]["img"] = \
+                    [self.compose(img) for img in data["adjacent"][frame]["img"]]
         data["img_norm_cfg"] = dict(mean=self.mean, std=self.std)
         return data
 

@@ -58,6 +58,7 @@ train_pipeline:
   -
     type: LoadMultiViewImageFromFiles
     to_float32: true
+    sequential: ${sequential}
   -
     type: LoadPointsFromFile
     coord_type: LIDAR
@@ -65,6 +66,7 @@ train_pipeline:
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}
     load_augmented: ${load_augmented}
+    sequential: ${sequential}
   -
     type: LoadPointsFromMultiSweeps
     sweeps_num: 9
@@ -74,6 +76,7 @@ train_pipeline:
     pad_empty_sweeps: true
     remove_close: true
     load_augmented: ${load_augmented}
+    sequential: ${sequential}
   -
     type: LoadAnnotations3D
     with_bbox_3d: true
@@ -125,12 +128,14 @@ train_pipeline:
     rot_lim: ${augment2d.rotate}
     rand_flip: true
     is_train: true
+    sequential: ${sequential}
   -
     type: GlobalRotScaleTrans
     resize_lim: ${augment3d.scale}
     rot_lim: ${augment3d.rotate}
     trans_lim: ${augment3d.translate}
     is_train: true
+    sequential: ${sequential}
   -
     type: LoadBEVSegmentation
     dataset_root: ${dataset_root}
@@ -139,9 +144,11 @@ train_pipeline:
     classes: ${map_classes}
   -
     type: RandomFlip3D
+    sequential: ${sequential}
   -
     type: PointsRangeFilter
     point_cloud_range: ${point_cloud_range}
+    sequential: ${sequential}
   -
     type: ObjectRangeFilter
     point_cloud_range: ${point_cloud_range}
@@ -152,11 +159,13 @@ train_pipeline:
     type: ImageNormalize
     mean: [0.485, 0.456, 0.406]
     std: [0.229, 0.224, 0.225]
+    sequential: ${sequential}
   - 
     type: GridMask
     use_h: true
     use_w: true
     max_epoch: ${max_epochs}
+    sequential: ${sequential}
     rotate: 1
     offset: false
     ratio: 0.5
@@ -165,9 +174,11 @@ train_pipeline:
     fixed_prob: ${augment2d.gridmask.fixed_prob}
   -
     type: PointShuffle
+    sequential: ${sequential}
   -
     type: DefaultFormatBundle3D
     classes: ${object_classes}
+    sequential: ${sequential}
   -
     type: Collect3D
     keys:
@@ -190,6 +201,7 @@ test_pipeline:
   -
     type: LoadMultiViewImageFromFiles
     to_float32: true
+    sequential: ${sequential}
   -
     type: LoadPointsFromFile
     coord_type: LIDAR
@@ -197,6 +209,7 @@ test_pipeline:
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}
     load_augmented: ${load_augmented}
+    sequential: ${sequential}
   -
     type: LoadPointsFromMultiSweeps
     sweeps_num: 9
@@ -206,6 +219,7 @@ test_pipeline:
     pad_empty_sweeps: true
     remove_close: true
     load_augmented: ${load_augmented}
+    sequential: ${sequential}
   -
     type: LoadAnnotations3D
     with_bbox_3d: true
@@ -219,12 +233,14 @@ test_pipeline:
     rot_lim: [0.0, 0.0]
     rand_flip: false
     is_train: false
+    sequential: ${sequential}
   -
     type: GlobalRotScaleTrans
     resize_lim: [1.0, 1.0]
     rot_lim: [0.0, 0.0]
     trans_lim: 0.0
     is_train: false
+    sequential: ${sequential}
   -
     type: LoadBEVSegmentation
     dataset_root: ${dataset_root}
@@ -234,13 +250,16 @@ test_pipeline:
   -
     type: PointsRangeFilter
     point_cloud_range: ${point_cloud_range}
+    sequential: ${sequential}
   -
     type: ImageNormalize
     mean: [0.485, 0.456, 0.406]
     std: [0.229, 0.224, 0.225]
+    sequential: ${sequential}
   -
     type: DefaultFormatBundle3D
     classes: ${object_classes}
+    sequential: ${sequential}
   -
     type: Collect3D
     keys:
@@ -275,6 +294,8 @@ data:
       test_mode: false
       use_valid_flag: true
       box_type_3d: LiDAR
+      sequential: ${sequential}
+      adj_frame_num: ${adj_frame_num}
   val:
     type: ${dataset_type}
     dataset_root: ${dataset_root}
@@ -285,6 +306,8 @@ data:
     modality: ${input_modality}
     test_mode: false
     box_type_3d: LiDAR
+    sequential: ${sequential}
+    adj_frame_num: ${adj_frame_num}
   test:
     type: ${dataset_type}
     dataset_root: ${dataset_root}
@@ -295,6 +318,8 @@ data:
     modality: ${input_modality}
     test_mode: true
     box_type_3d: LiDAR
+    sequential: ${sequential}
+    adj_frame_num: ${adj_frame_num}
 
 evaluation:
   interval: 1

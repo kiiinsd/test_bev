@@ -269,12 +269,12 @@ def create_groundtruth_database(
 
     group_counter = 0
     for j in track_iter_progress(list(range(len(dataset)))):
-        input_dict = dataset.my_get_data_info(j)
+        input_dict = dataset.get_data_info(j)
         dataset.pre_pipeline(input_dict)
         example = dataset.pipeline(input_dict)
         annos = example["ann_info"]
-        image_idx = example["sample_idx"]
-        points = example["points"].tensor.numpy()
+        image_idx = example["curr"]["sample_idx"]
+        points = example["curr"]["points"].tensor.numpy()
         gt_boxes_3d = annos["gt_bboxes_3d"].tensor.numpy()
         names = annos["gt_names"]
         group_dict = dict()

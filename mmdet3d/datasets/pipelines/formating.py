@@ -29,11 +29,13 @@ class DefaultFormatBundle3D:
     def __init__(
         self,
         classes,
+        sequential,
         with_gt: bool = True,
         with_label: bool = True,
     ) -> None:
         super().__init__()
         self.class_names = classes
+        self.sequential = sequential
         self.with_gt = with_gt
         self.with_label = with_label
 
@@ -48,9 +50,22 @@ class DefaultFormatBundle3D:
                 default bundle.
         """
         # Format 3D data
-        if "points" in results:
-            assert isinstance(results["points"], BasePoints)
-            results["points"] = DC(results["points"].tensor)
+        if "points" in results["curr"]:
+            if self.sequential:
+                assert "adjacent" in results
+                points_list = []
+                num_frames = len(results["adjacent"]) + 1
+                for frame in range(num_frames):
+                    if frame == 0:
+                        results_ = results["curr"]
+                    else:
+                        results_ = results["adjacent"][frame-1]
+                    assert isinstance(results_["points"], BasePoints)
+                    points_list.append(results_["points"].tensor)
+                results["points"] = DC(points_list, stack=True)
+            else:
+                assert isinstance(results["curr"]["points"], BasePoints)
+                results["points"] = DC(results["curr"]["points"].tensor)
 
         for key in ["voxels", "coors", "voxel_centers", "num_points"]:
             if key not in results:
@@ -97,8 +112,14 @@ class DefaultFormatBundle3D:
                         [self.class_names.index(n) for n in results["gt_names_3d"]],
                         dtype=np.int64,
                     )
-        if "img" in results:
-            results["img"] = DC(torch.stack(results["img"]), stack=True)
+        if "img" in results["curr"]:
+            img = results["curr"]["img"]
+            if self.sequential:
+                assert "adjacent" in results
+                num_frames = len(results["adjacent"])
+                for frame in range(num_frames):
+                    img.extend(results["adjacent"][frame]["img"])
+            results["img"] = DC(torch.stack(img), stack=True)
 
         for key in [
             "proposals",

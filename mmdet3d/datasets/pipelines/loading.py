@@ -27,9 +27,10 @@ class LoadMultiViewImageFromFiles:
         color_type (str): Color type of the file. Defaults to 'unchanged'.
     """
 
-    def __init__(self, to_float32=False, color_type="unchanged"):
+    def __init__(self, to_float32=False, color_type="unchanged", sequential=False):
         self.to_float32 = to_float32
         self.color_type = color_type
+        self.sequential = sequential
 
     def __call__(self, results):
         """Call function to load multi-view image from files.
@@ -49,26 +50,42 @@ class LoadMultiViewImageFromFiles:
                 - scale_factor (float): Scale factor.
                 - img_norm_cfg (dict): Normalization configuration of images.
         """
-        filename = results["image_paths"]
-        # img is of shape (h, w, c, num_views)
-        # modified for waymo
-        images = []
-        h, w = 0, 0
-        for name in filename:
-            images.append(Image.open(name))
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in results
+            num_frames += len(results["adjacent"])
         
-        #TODO: consider image padding in waymo
-
-        results["filename"] = filename
-        # unravel to list, see `DefaultFormatBundle` in formating.py
-        # which will transpose each image separately and then stack into array
-        results["img"] = images
-        # [1600, 900]
-        results["img_shape"] = images[0].size
-        results["ori_shape"] = images[0].size
-        # Set initial values for default meta_keys
-        results["pad_shape"] = images[0].size
-        results["scale_factor"] = 1.0
+        for frame in range(num_frames):
+            if frame == 0:
+                filename = results["curr"]["image_paths"]
+            else:
+                filename = results["adjacent"][frame-1]["image_paths"]
+            # img is of shape (h, w, c, num_views)
+            # modified for waymo
+            images = []
+            h, w = 0, 0
+            for name in filename:
+                images.append(Image.open(name))
+            
+            #TODO: consider image padding in waymo
+            if frame == 0:
+                results["curr"]["filename"] = filename
+                # unravel to list, see `DefaultFormatBundle` in formating.py
+                # which will transpose each image separately and then stack into array
+                results["curr"]["img"] = images
+                # [1600, 900]
+                results["curr"]["img_shape"] = images[0].size
+                results["curr"]["ori_shape"] = images[0].size
+                # Set initial values for default meta_keys
+                results["curr"]["pad_shape"] = images[0].size
+                results["curr"]["scale_factor"] = 1.0
+            else:
+                results["adjacent"][frame-1]["filename"] = filename
+                results["adjacent"][frame-1]["img"] = images
+                results["adjacent"][frame-1]["img_shape"] = images[0].size
+                results["adjacent"][frame-1]["ori_shape"] = images[0].size
+                results["adjacent"][frame-1]["pad_shape"] = images[0].size
+                results["adjacent"][frame-1]["scale_factor"] = 1.0
         
         return results
 
@@ -109,6 +126,7 @@ class LoadPointsFromMultiSweeps:
         test_mode=False,
         load_augmented=None,
         reduce_beams=None,
+        sequential=False,
     ):
         self.load_dim = load_dim
         self.sweeps_num = sweeps_num
@@ -120,6 +138,7 @@ class LoadPointsFromMultiSweeps:
         self.test_mode = test_mode
         self.load_augmented = load_augmented
         self.reduce_beams = reduce_beams
+        self.sequential = sequential
 
     def _load_points(self, lidar_path):
         """Private function to load point clouds data.
@@ -179,55 +198,68 @@ class LoadPointsFromMultiSweeps:
                 - points (np.ndarray | :obj:`BasePoints`): Multi-sweep point \
                     cloud arrays.
         """
-        points = results["points"]
-        points.tensor[:, 4] = 0
-        sweep_points_list = [points]
-        ts = results["timestamp"] / 1e6
-        if self.pad_empty_sweeps and len(results["sweeps"]) == 0:
-            for i in range(self.sweeps_num):
-                if self.remove_close:
-                    sweep_points_list.append(self._remove_close(points))
-                else:
-                    sweep_points_list.append(points)
-        else:
-            if len(results["sweeps"]) <= self.sweeps_num:
-                choices = np.arange(len(results["sweeps"]))
-            elif self.test_mode:
-                choices = np.arange(self.sweeps_num)
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in results
+            num_frames += len(results["adjacent"])
+        
+        for frame in range(num_frames):
+            if frame == 0:
+                results_ = results["curr"]
             else:
-                # NOTE: seems possible to load frame -11?
-                if not self.load_augmented:
-                    choices = np.random.choice(
-                        len(results["sweeps"]), self.sweeps_num, replace=False
-                    )
+                results_ = results["adjacent"][frame-1]
+            points = results_["points"]
+            points.tensor[:, 4] = 0
+            sweep_points_list = [points]
+            ts = results_["timestamp"] / 1e6
+            if self.pad_empty_sweeps and len(results_["sweeps"]) == 0:
+                for i in range(self.sweeps_num):
+                    if self.remove_close:
+                        sweep_points_list.append(self._remove_close(points))
+                    else:
+                        sweep_points_list.append(points)
+            else:
+                if len(results_["sweeps"]) <= self.sweeps_num:
+                    choices = np.arange(len(results_["sweeps"]))
+                elif self.test_mode:
+                    choices = np.arange(self.sweeps_num)
                 else:
-                    # don't allow to sample the earliest frame, match with Tianwei's implementation.
-                    choices = np.random.choice(
-                        len(results["sweeps"]) - 1, self.sweeps_num, replace=False
+                    # NOTE: seems possible to load frame -11?
+                    if not self.load_augmented:
+                        choices = np.random.choice(
+                            len(results_["sweeps"]), self.sweeps_num, replace=False
+                        )
+                    else:
+                        # don't allow to sample the earliest frame, match with Tianwei's implementation.
+                        choices = np.random.choice(
+                            len(results_["sweeps"]) - 1, self.sweeps_num, replace=False
+                        )
+                for idx in choices:
+                    sweep = results_["sweeps"][idx]
+                    points_sweep = self._load_points(sweep["data_path"])
+                    points_sweep = np.copy(points_sweep).reshape(-1, self.load_dim)
+
+                    # TODO: make it more general
+                    if self.reduce_beams and self.reduce_beams < 32:
+                        points_sweep = reduce_LiDAR_beams(points_sweep, self.reduce_beams)
+
+                    if self.remove_close:
+                        points_sweep = self._remove_close(points_sweep)
+                    sweep_ts = sweep["timestamp"] / 1e6
+                    points_sweep[:, :3] = (
+                        points_sweep[:, :3] @ sweep["sensor2lidar_rotation"].T
                     )
-            for idx in choices:
-                sweep = results["sweeps"][idx]
-                points_sweep = self._load_points(sweep["data_path"])
-                points_sweep = np.copy(points_sweep).reshape(-1, self.load_dim)
+                    points_sweep[:, :3] += sweep["sensor2lidar_translation"]
+                    points_sweep[:, 4] = ts - sweep_ts
+                    points_sweep = points.new_point(points_sweep)
+                    sweep_points_list.append(points_sweep)
 
-                # TODO: make it more general
-                if self.reduce_beams and self.reduce_beams < 32:
-                    points_sweep = reduce_LiDAR_beams(points_sweep, self.reduce_beams)
-
-                if self.remove_close:
-                    points_sweep = self._remove_close(points_sweep)
-                sweep_ts = sweep["timestamp"] / 1e6
-                points_sweep[:, :3] = (
-                    points_sweep[:, :3] @ sweep["sensor2lidar_rotation"].T
-                )
-                points_sweep[:, :3] += sweep["sensor2lidar_translation"]
-                points_sweep[:, 4] = ts - sweep_ts
-                points_sweep = points.new_point(points_sweep)
-                sweep_points_list.append(points_sweep)
-
-        points = points.cat(sweep_points_list)
-        points = points[:, self.use_dim]
-        results["points"] = points
+            points = points.cat(sweep_points_list)
+            points = points[:, self.use_dim]
+            if frame == 0:
+                results["curr"]["points"] = points
+            else:
+                results["adjacent"][frame-1]["points"] = points
         return results
 
     def __repr__(self):
@@ -260,8 +292,8 @@ class LoadBEVSegmentation:
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
         lidar2point = data["lidar_aug_matrix"]
         point2lidar = np.linalg.inv(lidar2point)
-        lidar2ego = data["lidar2ego"]
-        ego2global = data["ego2global"]
+        lidar2ego = data["curr"]["lidar2ego"]
+        ego2global = data["curr"]["ego2global"]
         lidar2global = ego2global @ lidar2ego @ point2lidar
 
         map_pose = lidar2global[:2, 3]
@@ -286,7 +318,7 @@ class LoadBEVSegmentation:
             layer_names.extend(mappings[name])
         layer_names = list(set(layer_names))
 
-        location = data["location"]
+        location = data["curr"]["location"]
         masks = self.maps[location].get_map_mask(
             patch_box=patch_box,
             patch_angle=patch_angle,
@@ -338,6 +370,7 @@ class LoadPointsFromFile:
         use_color=False,
         load_augmented=None,
         reduce_beams=None,
+        sequential=False,
     ):
         self.shift_height = shift_height
         self.use_color = use_color
@@ -353,6 +386,7 @@ class LoadPointsFromFile:
         self.use_dim = use_dim
         self.load_augmented = load_augmented
         self.reduce_beams = reduce_beams
+        self.sequential = sequential
 
     def _load_points(self, lidar_path):
         """Private function to load point clouds data.
@@ -389,42 +423,55 @@ class LoadPointsFromFile:
 
                 - points (:obj:`BasePoints`): Point clouds data.
         """
-        lidar_path = results["lidar_path"]
-        points = self._load_points(lidar_path)
-        points = points.reshape(-1, self.load_dim)
-        # TODO: make it more general
-        if self.reduce_beams and self.reduce_beams < 32:
-            points = reduce_LiDAR_beams(points, self.reduce_beams)
-        points = points[:, self.use_dim]
-        attribute_dims = None
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in results
+            num_frames += len(results["adjacent"])
 
-        if self.shift_height:
-            floor_height = np.percentile(points[:, 2], 0.99)
-            height = points[:, 2] - floor_height
-            points = np.concatenate(
-                [points[:, :3], np.expand_dims(height, 1), points[:, 3:]], 1
-            )
-            attribute_dims = dict(height=3)
+        for frame in range(num_frames):
+            if frame == 0:
+                results_ = results["curr"]
+            else:
+                results_ = results["adjacent"][frame-1]
+            lidar_path = results_["lidar_path"]
+            points = self._load_points(lidar_path)
+            points = points.reshape(-1, self.load_dim)
+            # TODO: make it more general
+            if self.reduce_beams and self.reduce_beams < 32:
+                points = reduce_LiDAR_beams(points, self.reduce_beams)
+            points = points[:, self.use_dim]
+            attribute_dims = None
 
-        if self.use_color:
-            assert len(self.use_dim) >= 6
-            if attribute_dims is None:
-                attribute_dims = dict()
-            attribute_dims.update(
-                dict(
-                    color=[
-                        points.shape[1] - 3,
-                        points.shape[1] - 2,
-                        points.shape[1] - 1,
-                    ]
+            if self.shift_height:
+                floor_height = np.percentile(points[:, 2], 0.99)
+                height = points[:, 2] - floor_height
+                points = np.concatenate(
+                    [points[:, :3], np.expand_dims(height, 1), points[:, 3:]], 1
                 )
-            )
+                attribute_dims = dict(height=3)
 
-        points_class = get_points_type(self.coord_type)
-        points = points_class(
-            points, points_dim=points.shape[-1], attribute_dims=attribute_dims
-        )
-        results["points"] = points
+            if self.use_color:
+                assert len(self.use_dim) >= 6
+                if attribute_dims is None:
+                    attribute_dims = dict()
+                attribute_dims.update(
+                    dict(
+                        color=[
+                            points.shape[1] - 3,
+                            points.shape[1] - 2,
+                            points.shape[1] - 1,
+                        ]
+                    )
+                )
+
+            points_class = get_points_type(self.coord_type)
+            points = points_class(
+                points, points_dim=points.shape[-1], attribute_dims=attribute_dims
+            )
+            if frame == 0:
+                results["curr"]["points"] = points
+            else:
+                results["adjacent"][frame-1]["points"] = points
 
         return results
 
