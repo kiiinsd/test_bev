@@ -181,6 +181,7 @@ train_pipeline:
     sequential: ${sequential}
   -
     type: Collect3D
+    sequential: ${sequential}
     keys:
       - img
       - points
@@ -196,6 +197,7 @@ train_pipeline:
       - lidar2image
       - img_aug_matrix
       - lidar_aug_matrix
+      - ego2global
 
 test_pipeline:
   -
@@ -262,6 +264,7 @@ test_pipeline:
     sequential: ${sequential}
   -
     type: Collect3D
+    sequential: ${sequential}
     keys:
       - img
       - points
@@ -277,6 +280,7 @@ test_pipeline:
       - lidar2image
       - img_aug_matrix
       - lidar_aug_matrix
+      - ego2global
 
 data:
   samples_per_gpu: 1

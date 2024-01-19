@@ -54,6 +54,7 @@ class DefaultFormatBundle3D:
             if self.sequential:
                 assert "adjacent" in results
                 points_list = []
+                points_num_list = []
                 num_frames = len(results["adjacent"]) + 1
                 for frame in range(num_frames):
                     if frame == 0:
@@ -62,10 +63,13 @@ class DefaultFormatBundle3D:
                         results_ = results["adjacent"][frame-1]
                     assert isinstance(results_["points"], BasePoints)
                     points_list.append(results_["points"].tensor)
-                results["points"] = DC(points_list, stack=True)
+                    points_num_list.append(results_["points"].tensor.shape[0])
+                results["points"] = DC(torch.cat(points_list, dim=0), stack=True)
+                results["points_num"] = DC(to_tensor(np.array(points_num_list)), stack=True)
             else:
                 assert isinstance(results["curr"]["points"], BasePoints)
                 results["points"] = DC(results["curr"]["points"].tensor)
+                results["points_num"] = DC(to_tensor(results["curr"]["points"].tensor.shape[0]), stack=True)
 
         for key in ["voxels", "coors", "voxel_centers", "num_points"]:
             if key not in results:
@@ -150,6 +154,7 @@ class Collect3D:
     def __init__(
         self,
         keys,
+        sequential,
         meta_keys=(
             "camera_intrinsics",
             "camera2ego",
@@ -184,6 +189,7 @@ class Collect3D:
         self.meta_keys = meta_keys
         # [fixme] note: need at least 1 meta lis key to perform training.
         self.meta_lis_keys = meta_lis_keys
+        self.sequential = sequential
 
     def __call__(self, results):
         """Call function to collect keys in results. The keys in ``meta_keys``
@@ -207,6 +213,17 @@ class Collect3D:
                 if isinstance(results[key], list):
                     data[key] = DC(to_tensor(val), stack=True)
                 else:
+                    data[key] = DC(to_tensor(val), stack=True, pad_dims=1)
+            elif key in results["curr"]:
+                if self.sequential:
+                    assert "adjacent" in results
+                    key_list = [results["curr"][key]]
+                    for frame in results["adjacent"]:
+                        key_list.append(frame[key])
+                        val = np.array(key_list)
+                        data[key] = DC(to_tensor(val), stack=True)
+                else:
+                    val = np.array(results["curr"][key])
                     data[key] = DC(to_tensor(val), stack=True, pad_dims=1)
 
         metas = {}
