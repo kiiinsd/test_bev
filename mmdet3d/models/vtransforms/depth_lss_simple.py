@@ -31,7 +31,7 @@ class DepthLSSTransformSimple(DepthLSSTransform):
             ybound, 
             zbound, 
             dbound, 
-            downsample
+            downsample,
         )
 
     @force_fp32()
@@ -110,4 +110,6 @@ class DepthLSSTransformSimple(DepthLSSTransform):
 
         x = self.get_cam_feats(img, depth)
         x = self.bev_pool(geom, x)
+
+        x = self.downsample(x)
         return x
