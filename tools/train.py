@@ -18,7 +18,7 @@ from mmdet3d.utils import get_root_logger, convert_sync_batchnorm, recursive_eva
 
 
 def main():
-    dist.init()
+    #dist.init()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config", metavar="FILE", help="config file")
@@ -77,7 +77,7 @@ def main():
         model,
         datasets,
         cfg,
-        distributed=True,
+        distributed=False,
         validate=True,
         timestamp=timestamp,
     )
