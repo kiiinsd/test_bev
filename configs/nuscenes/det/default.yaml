@@ -1,6 +1,8 @@
 model:
-  type: BEVFusion
+  type: My_BEVFusion
   encoders: null
   fuser: null
   heads:
     map: null
+  adj_frame_num: 1
+  sequential: true
