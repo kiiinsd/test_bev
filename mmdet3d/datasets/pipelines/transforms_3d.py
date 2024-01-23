@@ -221,6 +221,45 @@ class GridMask:
         if np.random.rand() > self.prob:
             return results
         
+        imgs = results["curr"]["img"]
+        h = imgs[0].shape[0]
+        w = imgs[0].shape[1]
+        self.d1 = 2
+        self.d2 = min(h, w)
+        hh = int(1.5 * h)
+        ww = int(1.5 * w)
+        d = np.random.randint(self.d1, self.d2)
+        if self.ratio == 1:
+            self.l = np.random.randint(1, d)
+        else:
+            self.l = min(max(int(d * self.ratio + 0.5), 1), d - 1)
+        mask = np.ones((hh, ww), np.float32)
+        st_h = np.random.randint(d)
+        st_w = np.random.randint(d)
+        if self.use_h:
+            for i in range(hh // d):
+                s = d * i + st_h
+                t = min(s + self.l, hh)
+                mask[s:t, :] *= 0
+        if self.use_w:
+            for i in range(ww // d):
+                s = d * i + st_w
+                t = min(s + self.l, ww)
+                mask[:, s:t] *= 0
+
+        r = np.random.randint(self.rotate)
+        mask = Image.fromarray(np.uint8(mask))
+        mask = mask.rotate(r)
+        mask = np.asarray(mask)
+        mask = mask[
+            (hh - h) // 2 : (hh - h) // 2 + h, (ww - w) // 2 : (ww - w) // 2 + w
+        ]
+
+        mask = mask.astype(np.float32)
+        mask = mask[:, :, None]
+        if self.mode == 1:
+            mask = 1 - mask
+
         num_frames = 1
         if self.sequential:
             assert "adjacent" in results
@@ -230,44 +269,7 @@ class GridMask:
                 imgs = results["curr"]["img"]
             else:
                 imgs = results["adjacent"][frame-1]["img"]
-            h = imgs[0].shape[0]
-            w = imgs[0].shape[1]
-            self.d1 = 2
-            self.d2 = min(h, w)
-            hh = int(1.5 * h)
-            ww = int(1.5 * w)
-            d = np.random.randint(self.d1, self.d2)
-            if self.ratio == 1:
-                self.l = np.random.randint(1, d)
-            else:
-                self.l = min(max(int(d * self.ratio + 0.5), 1), d - 1)
-            mask = np.ones((hh, ww), np.float32)
-            st_h = np.random.randint(d)
-            st_w = np.random.randint(d)
-            if self.use_h:
-                for i in range(hh // d):
-                    s = d * i + st_h
-                    t = min(s + self.l, hh)
-                    mask[s:t, :] *= 0
-            if self.use_w:
-                for i in range(ww // d):
-                    s = d * i + st_w
-                    t = min(s + self.l, ww)
-                    mask[:, s:t] *= 0
-
-            r = np.random.randint(self.rotate)
-            mask = Image.fromarray(np.uint8(mask))
-            mask = mask.rotate(r)
-            mask = np.asarray(mask)
-            mask = mask[
-                (hh - h) // 2 : (hh - h) // 2 + h, (ww - w) // 2 : (ww - w) // 2 + w
-            ]
-
-            mask = mask.astype(np.float32)
-            mask = mask[:, :, None]
-            if self.mode == 1:
-                mask = 1 - mask
-
+                
             # mask = mask.expand_as(imgs[0])
             if self.offset:
                 offset = torch.from_numpy(2 * (np.random.rand(h, w) - 0.5)).float()
