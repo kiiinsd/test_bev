@@ -231,9 +231,15 @@ class My_BEVFusion(BEVFusion):
         img = torch.split(img, 1, dim=2)
         img_list = [t.squeeze(2) for t in img]
 
-        num_list = points_num.squeeze().tolist()
-        points = torch.split(points, num_list, dim=1)
-        points_list = [p.squeeze(1) for p in points]
+        for b in range(B):
+            num_list = points_num[b].squeeze().tolist()
+            points[b] = torch.split(points[b], num_list, dim=0)
+
+        points_list = []
+        for frame in range(self.num_frames):
+            points_list.append([])
+            for b in range(B):
+                points_list[frame].append(points[b][frame])
 
         lidar2image = torch.split(lidar2image, 1, dim=1)
         lidar2image_list = [t.squeeze(1) for t in lidar2image]

@@ -64,12 +64,12 @@ class DefaultFormatBundle3D:
                     assert isinstance(results_["points"], BasePoints)
                     points_list.append(results_["points"].tensor)
                     points_num_list.append(results_["points"].tensor.shape[0])
-                results["points"] = DC(torch.cat(points_list, dim=0), stack=True, pad_dims=None)
+                results["points"] = DC(torch.cat(points_list, dim=0))
                 results["points_num"] = DC(to_tensor(np.array(points_num_list)), \
                                            stack=True, pad_dims=None)
             else:
                 assert isinstance(results["curr"]["points"], BasePoints)
-                results["points"] = DC(results["curr"]["points"].tensor, stack=True, pad_dims=None)
+                results["points"] = DC(results["curr"]["points"].tensor)
                 results["points_num"] = DC(to_tensor(results["curr"]["points"].tensor.shape[0]), \
                                            stack=True, pad_dims=None)
 
