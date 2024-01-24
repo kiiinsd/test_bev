@@ -101,7 +101,7 @@ def train_model(
         cfg.checkpoint_config,
         cfg.log_config,
         cfg.get("momentum_config", None),
-        custom_hooks_config=cfg.get('custom_hooks', None)
+        #custom_hooks_config=cfg.get('custom_hooks', None)
     )
     if isinstance(runner, EpochBasedRunner):
         runner.register_hook(DistSamplerSeedHook())
