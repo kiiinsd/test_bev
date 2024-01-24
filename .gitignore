@@ -8,3 +8,5 @@ train_result/
 pretrained
 *.o
 *.so
+run*
+viz/
