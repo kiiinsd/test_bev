@@ -6,7 +6,7 @@ import mmcv
 import numpy as np
 import torch
 from mmcv import Config
-from mmcv.parallel import MMDistributedDataParallel
+from mmcv.parallel import MMDistributedDataParallel, MMDataParallel
 from mmcv.runner import load_checkpoint
 from torchpack import distributed as dist
 from torchpack.utils.config import configs
@@ -37,7 +37,7 @@ def recursive_eval(obj, globals=None):
 
 
 def main() -> None:
-    dist.init()
+    #dist.init()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config", metavar="FILE")
@@ -56,7 +56,9 @@ def main() -> None:
     cfg = Config(recursive_eval(configs), filename=args.config)
 
     torch.backends.cudnn.benchmark = cfg.cudnn_benchmark
-    torch.cuda.set_device(dist.local_rank())
+    #torch.cuda.set_device(dist.local_rank())
+
+    distributed = False
 
     # build the dataloader
     dataset = build_dataset(cfg.data[args.split])
@@ -64,7 +66,7 @@ def main() -> None:
         dataset,
         samples_per_gpu=1,
         workers_per_gpu=cfg.data.workers_per_gpu,
-        dist=True,
+        dist=distributed,
         shuffle=False,
     )
 
@@ -73,11 +75,14 @@ def main() -> None:
         model = build_model(cfg.model)
         load_checkpoint(model, args.checkpoint, map_location="cpu")
 
-        model = MMDistributedDataParallel(
-            model.cuda(),
-            device_ids=[torch.cuda.current_device()],
-            broadcast_buffers=False,
-        )
+        if distributed:
+            model = MMDistributedDataParallel(
+                model.cuda(),
+                device_ids=[torch.cuda.current_device()],
+                broadcast_buffers=False,
+            )
+        else:
+             model = MMDataParallel(model, device_ids=[0])
         model.eval()
 
     for data in tqdm(dataflow):
