@@ -87,9 +87,9 @@ class My_BEVFusion(BEVFusion):
                 lidar2image,
                 camera_intrinsics,
                 camera2lidar,
+                ego2global,
                 img_aug_matrix,
                 lidar_aug_matrix,
-                ego2global,
                 **kwargs
             )
         
