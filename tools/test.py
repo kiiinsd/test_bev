@@ -117,7 +117,7 @@ def main():
     # dist.init()
 
     torch.backends.cudnn.benchmark = True
-    torch.cuda.set_device(dist.local_rank())
+    #torch.cuda.set_device(dist.local_rank())
 
     assert args.out or args.eval or args.format_only or args.show or args.show_dir, (
         "Please specify at least one operation (save/eval/format/show the "
@@ -196,7 +196,7 @@ def main():
 
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader)
+        outputs, input_data = single_gpu_test(model, data_loader)
     else:
         model = MMDistributedDataParallel(
             model.cuda(),
@@ -226,8 +226,13 @@ def main():
             ]:
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
-            print(dataset.evaluate(outputs, **eval_kwargs))
 
+            input_data_files, tmp_dir = dataset.format_results(input_data, **kwargs)
+
+            print(dataset.evaluate(outputs,input_data_files = input_data_files, **eval_kwargs))
+            #print(dataset.evaluate(outputs, **eval_kwargs))
+
+            tmp_dir.cleanup()
 
 if __name__ == "__main__":
     main()
