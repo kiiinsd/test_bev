@@ -139,7 +139,8 @@ class My_BEVFusion(BEVFusion):
                         )
                 else:
                     raise ValueError(f"unsupported head: {type}")
-        return
+        
+        return outputs
         
 
     @auto_fp16(apply_to=("img", "points"))
