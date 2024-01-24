@@ -70,6 +70,7 @@ class My_BEVFusion(BEVFusion):
         lidar2image,
         camera_intrinsics,
         camera2lidar,
+        ego2global,
         img_aug_matrix,
         lidar_aug_matrix,
         metas,
@@ -79,7 +80,7 @@ class My_BEVFusion(BEVFusion):
         **kwargs,
     ):
         if self.sequential:
-            features = self.extract_bev_features_sequential(
+            x = self.extract_bev_features_sequential(
                 img,
                 points,
                 points_num,
@@ -88,9 +89,56 @@ class My_BEVFusion(BEVFusion):
                 camera2lidar,
                 img_aug_matrix,
                 lidar_aug_matrix,
+                ego2global,
                 **kwargs
             )
         
+        batch_size = x.shape[0]
+
+        x = self.decoder["backbone"](x)
+        x = self.decoder["neck"](x)
+
+        if self.training:
+            outputs = {}
+            for type, head in self.heads.items():
+                if type == "object":
+                    pred_dict = head(x, metas)
+                    losses = head.loss(gt_bboxes_3d, gt_labels_3d, pred_dict)
+                elif type == "map":
+                    losses = head(x, gt_masks_bev)
+                else:
+                    raise ValueError(f"unsupported head: {type}")
+                for name, val in losses.items():
+                    if val.requires_grad:
+                        outputs[f"loss/{type}/{name}"] = val * self.loss_scale[type]
+                    else:
+                        outputs[f"stats/{type}/{name}"] = val
+            return outputs
+        else:
+            outputs = [{} for _ in range(batch_size)]
+            for type, head in self.heads.items():
+                if type == "object":
+                    pred_dict = head(x, metas)
+                    bboxes = head.get_bboxes(pred_dict, metas)
+                    for k, (boxes, scores, labels) in enumerate(bboxes):
+                        outputs[k].update(
+                            {
+                                "boxes_3d": boxes.to("cpu"),
+                                "scores_3d": scores.cpu(),
+                                "labels_3d": labels.cpu(),
+                            }
+                        )
+                elif type == "map":
+                    logits = head(x)
+                    for k in range(batch_size):
+                        outputs[k].update(
+                            {
+                                "masks_bev": logits[k].cpu(),
+                                "gt_masks_bev": gt_masks_bev[k].cpu(),
+                            }
+                        )
+                else:
+                    raise ValueError(f"unsupported head: {type}")
         return
         
 
@@ -103,18 +151,21 @@ class My_BEVFusion(BEVFusion):
         lidar2image, 
         camera_intrinsics, 
         camera2lidar, 
+        ego2global,
         img_aug_matrix, 
         lidar_aug_matrix, 
         **kwargs
     ):
-        img_list , points_list, lidar2image_list, camera_intrinsics_list, camera2lidar_list = \
+        img_list , points_list, lidar2image_list, camera_intrinsics_list, \
+        camera2lidar_list, ego2global_list = \
         self.prepare_inputs(
             img,
             points,
             points_num,
             lidar2image,
             camera_intrinsics,
-            camera2lidar
+            camera2lidar,
+            ego2global
         )
 
         fused_feature_list = []
@@ -152,9 +203,18 @@ class My_BEVFusion(BEVFusion):
 
             fused_feature_list.append(x)
 
+        x = self.align_feature(fused_feature_list, ego2global_list)
 
         return x
         
+    def align_feature(
+        self,
+        feature_list,
+        ego2global_list
+    ):
+        feature = torch.cat(feature_list, dim=1)
+        return feature
+
     def prepare_inputs(
         self,
         img,
@@ -163,6 +223,7 @@ class My_BEVFusion(BEVFusion):
         lidar2image,
         camera_intrinsics,
         camera2lidar,
+        ego2global,
     ):
         B, N, C, H, W = img.size()
         N = N // self.num_frames
@@ -183,4 +244,8 @@ class My_BEVFusion(BEVFusion):
         camera2lidar = torch.split(camera2lidar, 1, dim=1)
         camera2lidar_list = [t.squeeze(1) for t in camera2lidar]
 
-        return img_list, points_list, lidar2image_list, camera_intrinsics_list, camera2lidar_list
+        ego2global = torch.split(ego2global, 1, dim=1)
+        ego2global_list = [t.squeeze(1) for t in ego2global]
+
+        return img_list, points_list, lidar2image_list, camera_intrinsics_list, \
+            camera2lidar_list, ego2global_list
