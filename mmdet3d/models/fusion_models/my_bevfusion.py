@@ -282,7 +282,7 @@ class My_BEVFusion(BEVFusion):
 
         for frame in range(0, len(feature_list)-1):
             curr2adj = torch.inverse(adj_lidar2ego[frame]).matmul(torch.inverse(adj_ego2global[frame]))\
-            .matmul(curr_ego2global).matmul(curr_lidar2ego)
+            .matmul(curr_ego2global).matmul(curr_lidar2ego).view(n, 1, 1, 4, 4)
             curr2adj = curr2adj[:, :, :,
                       [True, True, False, True], :][:, :, :, :,
                                                     [True, True, False, True]]
