@@ -240,6 +240,7 @@ class My_BEVFusion(BEVFusion):
 
         return x
         
+    @force_fp32()
     def align_feature(
         self,
         feature_list,
