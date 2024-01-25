@@ -6,6 +6,14 @@ from torch import nn
 from torch._tensor import Tensor
 from torch.nn import functional as F
 
+from mmdet3d.models.builder import (
+    build_backbone,
+    build_fuser,
+    build_head,
+    build_neck,
+    build_vtransform,
+)
+
 from mmdet3d.models import FUSIONMODELS
 from mmdet3d.models.fusion_models.bevfusion import BEVFusion
 
@@ -26,6 +34,14 @@ class My_BEVFusion(BEVFusion):
         super().__init__(encoders, fuser, decoder, heads, **kwargs)
         self.num_frames = adj_frame_num + 1
         self.sequential = sequential
+        if self.sequential:
+            decoder_backbone_cfg = decoder["backbone"]
+            decoder_backbone_cfg["in_channels"] = 256 * self.num_frames
+            self.decoder["backbone"] = build_backbone(decoder_backbone_cfg)
+        self.grid = None
+        self.xbound = encoders["camera"]["vtransform"]["xbound"]
+        self.ybound = encoders["camera"]["vtransform"]["ybound"]
+        self.downsample = encoders["camera"]["vtransform"]["downsample"]
 
     def extract_camera_features(
             self, 
@@ -68,6 +84,7 @@ class My_BEVFusion(BEVFusion):
         points,
         points_num,
         lidar2image,
+        lidar2ego,
         camera_intrinsics,
         camera2lidar,
         ego2global,
@@ -85,9 +102,22 @@ class My_BEVFusion(BEVFusion):
                 points,
                 points_num,
                 lidar2image,
+                lidar2ego,
                 camera_intrinsics,
                 camera2lidar,
                 ego2global,
+                img_aug_matrix,
+                lidar_aug_matrix,
+                **kwargs
+            )
+        else:
+            x = self.extract_bev_features_single(
+                img,
+                points,
+                points_num,
+                lidar2image,
+                camera_intrinsics,
+                camera2lidar,
                 img_aug_matrix,
                 lidar_aug_matrix,
                 **kwargs
@@ -150,6 +180,7 @@ class My_BEVFusion(BEVFusion):
         points, 
         points_num,
         lidar2image, 
+        lidar2ego,
         camera_intrinsics, 
         camera2lidar, 
         ego2global,
@@ -157,13 +188,14 @@ class My_BEVFusion(BEVFusion):
         lidar_aug_matrix, 
         **kwargs
     ):
-        img_list , points_list, lidar2image_list, camera_intrinsics_list, \
+        img_list , points_list, lidar2image_list, lidar2ego_list, camera_intrinsics_list, \
         camera2lidar_list, ego2global_list = \
         self.prepare_inputs(
             img,
             points,
             points_num,
             lidar2image,
+            lidar2ego,
             camera_intrinsics,
             camera2lidar,
             ego2global
@@ -204,15 +236,61 @@ class My_BEVFusion(BEVFusion):
 
             fused_feature_list.append(x)
 
-        x = self.align_feature(fused_feature_list, ego2global_list)
+        x = self.align_feature(fused_feature_list, lidar2ego_list, ego2global_list)
 
         return x
         
     def align_feature(
         self,
         feature_list,
+        lidar2ego_list,
         ego2global_list
     ):
+        n, c, h, w = feature_list[0].shape
+        if self.grid is None:
+            # generate grid
+            xs = torch.linspace(
+                0, w - 1, w, dtype=feature_list[0].dtype,
+                device=feature_list[0].device).view(1, w).expand(h, w)
+            ys = torch.linspace(
+                0, h - 1, h, dtype=feature_list[0].dtype,
+                device=feature_list[0].device).view(h, 1).expand(h, w)
+            grid = torch.stack((xs, ys, torch.ones_like(xs)), -1)
+            self.grid = grid
+        else:
+            grid = self.grid
+        grid = grid.view(1, h, w, 3).expand(n, h, w, 3).view(n, h, w, 3, 1)
+
+        curr_lidar2ego = lidar2ego_list[0]
+        curr_ego2global = ego2global_list[0]
+        
+        adj_lidar2ego = lidar2ego_list[1:]
+        adj_ego2global = ego2global_list[1:]
+
+        feat2bev = torch.zeros((3, 3), dtype=grid.dtype).to(grid)
+        feat2bev[0, 0] = self.xbound[2] * self.downsample
+        feat2bev[1, 1] = self.ybound[2] * self.downsample
+        feat2bev[0, 2] = self.xbound[0]
+        feat2bev[1, 2] = self.ybound[0]
+        feat2bev[2, 2] = 1
+        feat2bev = feat2bev.view(1, 3, 3)
+
+        normalize_factor = torch.tensor([w - 1.0, h - 1.0],
+                                        dtype=feature_list[0].dtype,
+                                        device=feature_list[0].device)
+
+        for frame in range(1, len(feature_list)):
+            curr2adj = torch.inverse(adj_lidar2ego[frame]).matmul(torch.inverse(adj_ego2global[frame]))\
+            .matmul(curr_ego2global).matmul(curr_lidar2ego)
+
+            tf = torch.inverse(feat2bev).matmul(curr2adj).matmul(feat2bev)
+            adj_grid = tf.matmul(grid)
+            adj_grid = adj_grid[:, :, :, :2, 0] / normalize_factor.view(1, 1, 1, 
+                                                            2) * 2.0 - 1.0
+            
+            feature_list[frame] = F.grid_sample(feature_list[frame], adj_grid.to(feature_list[frame]), 
+                                                align_corners=True)
+
         feature = torch.cat(feature_list, dim=1)
         return feature
 
@@ -222,6 +300,7 @@ class My_BEVFusion(BEVFusion):
         points,
         points_num,
         lidar2image,
+        lidar2ego,
         camera_intrinsics,
         camera2lidar,
         ego2global,
@@ -245,6 +324,9 @@ class My_BEVFusion(BEVFusion):
         lidar2image = torch.split(lidar2image, 1, dim=1)
         lidar2image_list = [t.squeeze(1) for t in lidar2image]
 
+        lidar2ego = torch.split(lidar2ego, 1, dim=1)
+        lidar2ego_list = [t.squeeze(1) for t in lidar2ego]
+
         camera_intrinsics = torch.split(camera_intrinsics, 1, dim=1)
         camera_intrinsics_list = [t.squeeze(1) for t in camera_intrinsics]
 
@@ -254,5 +336,5 @@ class My_BEVFusion(BEVFusion):
         ego2global = torch.split(ego2global, 1, dim=1)
         ego2global_list = [t.squeeze(1) for t in ego2global]
 
-        return img_list, points_list, lidar2image_list, camera_intrinsics_list, \
+        return img_list, points_list, lidar2image_list, lidar2ego_list, camera_intrinsics_list, \
             camera2lidar_list, ego2global_list
