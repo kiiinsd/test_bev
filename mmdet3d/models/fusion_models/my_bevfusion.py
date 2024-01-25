@@ -279,7 +279,7 @@ class My_BEVFusion(BEVFusion):
                                         dtype=feature_list[0].dtype,
                                         device=feature_list[0].device)
 
-        for frame in range(1, len(feature_list)):
+        for frame in range(0, len(feature_list)-1):
             curr2adj = torch.inverse(adj_lidar2ego[frame]).matmul(torch.inverse(adj_ego2global[frame]))\
             .matmul(curr_ego2global).matmul(curr_lidar2ego)
 
@@ -288,7 +288,7 @@ class My_BEVFusion(BEVFusion):
             adj_grid = adj_grid[:, :, :, :2, 0] / normalize_factor.view(1, 1, 1, 
                                                             2) * 2.0 - 1.0
             
-            feature_list[frame] = F.grid_sample(feature_list[frame], adj_grid.to(feature_list[frame]), 
+            feature_list[frame + 1] = F.grid_sample(feature_list[frame + 1], adj_grid.to(feature_list[frame + 1]), 
                                                 align_corners=True)
 
         feature = torch.cat(feature_list, dim=1)
