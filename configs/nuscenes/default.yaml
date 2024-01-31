@@ -27,10 +27,10 @@ augment3d:
 object_classes:
   - car
   - truck
-  #- construction_vehicle
+  - construction_vehicle
   - bus
-  #- trailer
-  #- barrier
+  - trailer
+  - barrier
   - motorcycle
   - bicycle
   - pedestrian
