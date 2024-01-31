@@ -36,7 +36,8 @@ class My_BEVFusion(BEVFusion):
         self.sequential = sequential
         if self.sequential:
             in_channels = [self.num_frames * 256]
-            temp_fuser_cfg = fuser.update(in_channels=in_channels)
+            temp_fuser_cfg = fuser
+            temp_fuser_cfg.update(in_channels=in_channels)
             # decoder_backbone_cfg["in_channels"] = 256 * self.num_frames
             # self.decoder["backbone"] = build_backbone(decoder_backbone_cfg)
             self.temporal_fuser = build_fuser(temp_fuser_cfg)
