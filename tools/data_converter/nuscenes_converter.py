@@ -201,6 +201,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, max_sweeps=
             "ego2global_rotation": pose_record["rotation"],
             "timestamp": sample["timestamp"],
             "location": location,
+            "scene_token": sample["scene_token"],
         }
 
         l2e_r = info["lidar2ego_rotation"]

@@ -220,8 +220,8 @@ class NuScenesDataset(Custom3DDataset):
             adj_id_list = list(range(1, self.adj_frame_num+1, 1))
             for select_id in adj_id_list:
                 select_id = max(index - select_id, 0)
-                if not self.data_infos[select_id]["location"] == \
-                    self.data_infos[index]["location"]:
+                if not self.data_infos[select_id]["scene_token"] == \
+                    self.data_infos[index]["scene_token"]:
                     frame_id_list.append(index)
                 else:
                     frame_id_list.append(select_id)
