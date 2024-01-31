@@ -132,8 +132,8 @@ class My_BEVFusion(BEVFusion):
                 feature_list.append(feature)
             for frame in range(1, self.num_frames):
                 feature_list[frame] = self.align_feature(feature_list[frame],
-                                                         [lidar2ego[0], lidar2ego[frame]],
-                                                         [ego2global[0], ego2global[frame]])
+                                                         [lidar2egos[0], lidar2egos[frame]],
+                                                         [ego2globals[0], ego2globals[frame]])
             x = torch.cat(feature_list, dim=1)
                     
         else:
