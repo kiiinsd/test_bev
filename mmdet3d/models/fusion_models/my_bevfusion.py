@@ -287,7 +287,7 @@ class My_BEVFusion(BEVFusion):
         curr2adj = curr2adj[:, :, :,
                     [True, True, False, True], :][:, :, :, :,
                                                 [True, True, False, True]]
-        tf = torch.inverse(feat2bev).matmul(curr2adj).matmul(feat2bev)
+        tf = torch.linalg.inv(feat2bev).matmul(curr2adj).matmul(feat2bev)
         adj_grid = tf.matmul(grid)
         adj_grid = adj_grid[:, :, :, :2, 0] / normalize_factor.view(1, 1, 1, 
                                                         2) * 2.0 - 1.0
