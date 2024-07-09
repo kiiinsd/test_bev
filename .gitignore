@@ -10,3 +10,4 @@ pretrained
 *.so
 run*
 viz/
+temp.txt
