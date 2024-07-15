@@ -195,6 +195,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, max_sweeps=
             "token": sample["token"],
             "sweeps": [],
             "cams": dict(),
+            "radars": dict(),
             "lidar2ego_translation": cs_record["translation"],
             "lidar2ego_rotation": cs_record["rotation"],
             "ego2global_translation": pose_record["translation"],
@@ -228,6 +229,21 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, max_sweeps=
             )
             cam_info.update(camera_intrinsics=camera_intrinsics)
             info["cams"].update({cam: cam_info})
+        
+        # obtain 5 radar's information per frame
+        radar_types = [
+            "RADAR_BACK_LEFT",
+            "RADAR_BACK_RIGHT",
+            "RADAR_FRONT",
+            "RADAR_FRONT_LEFT",
+            "RADAR_FRONT_RIGHT",
+        ]
+        for radar in radar_types:
+            radar_token = sample["data"][radar]
+            radar_info = obtain_sensor2top(
+                nusc, radar_token, l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, radar
+            )
+            info["radars"].update({radar: radar_info})
 
         # obtain sweeps for a single key-frame
         sd_rec = nusc.get("sample_data", sample["data"]["LIDAR_TOP"])
@@ -648,3 +664,15 @@ def generate_record(
     coco_rec["iscrowd"] = 0
 
     return coco_rec
+
+if __name__ == "__main__":
+    root_path = "./data/nuscenes"
+    info_prefix = "nuscenes"
+    version = "v1.0-mini"
+    max_sweeps = 10
+    create_nuscenes_infos(
+        root_path,
+        info_prefix,
+        version,
+        max_sweeps
+    )
