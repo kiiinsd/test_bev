@@ -608,8 +608,21 @@ class LoadAnnotations3D(LoadAnnotations):
 class LoadRadarPointsFromFile:
     def __init__(
             self,
-            sequential,
+            coord_type,
+            load_dim = 5,
+            use_dim = 5,
+            sequential = False,
         ):
+        if isinstance(use_dim, int):
+            use_dim = list(range(use_dim))
+        assert (
+            max(use_dim) < load_dim
+        ), f"Expect all used dimensions < {load_dim}, got {use_dim}"
+        assert coord_type in ["CAMERA", "LIDAR", "DEPTH"]
+
+        self.coord_type = coord_type
+        self.load_dim = load_dim
+        self.use_dim = use_dim
         self.sequential = sequential
     
     def __call__(self, results):
@@ -624,6 +637,14 @@ class LoadRadarPointsFromFile:
             else:
                 results_ = results["adjacent"][frame-1]
 
-            
+            points_in_lidar_coord = []
+            for i in range(results_["radar_paths"]):
+                radar_path = results_["radar_paths"][i]
+                mmcv.check_file_exist(radar_path)
+                points = np.fromfile(radar_path, dtype=np.float32)
+                points = points.reshape(-1, self.load_dim)
+                radar2liadr = results_["radar2lidar"][i]
+
+
 
         return results
