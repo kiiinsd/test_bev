@@ -603,3 +603,27 @@ class LoadAnnotations3D(LoadAnnotations):
             results = self._load_attr_labels(results)
 
         return results
+
+@PIPELINES.register_module()
+class LoadRadarPointsFromFile:
+    def __init__(
+            self,
+            sequential,
+        ):
+        self.sequential = sequential
+    
+    def __call__(self, results):
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in results
+            num_frames += len(results["adjacent"])
+        
+        for frame in range(num_frames):
+            if frame == 0:
+                results_ = results["curr"]
+            else:
+                results_ = results["adjacent"][frame-1]
+
+            
+
+        return results

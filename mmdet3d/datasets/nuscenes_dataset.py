@@ -293,6 +293,27 @@ class NuScenesDataset(Custom3DDataset):
                     camera2lidar[:3, :3] = camera_info["sensor2lidar_rotation"]
                     camera2lidar[:3, 3] = camera_info["sensor2lidar_translation"]
                     data["camera2lidar"].append(camera2lidar)
+            
+            if self.modality["use_radar"]:
+                data["radar_paths"] = []
+                data["radar2ego"] = []
+                data["radar2lidar"] = []
+
+                for _, radar_info in info["radars"].items():
+                    data["radar_paths"].append(radar_info["data_path"])
+
+                    radar2ego = np.eye(4).astype(np.float32)
+                    radar2ego[:3, :3] = Quaternion(
+                        radar_info["sensor2ego_rotation"]
+                    ).rotation_matrix
+                    radar2ego[:3, 3] = radar_info["sensor2ego_translation"]
+                    data["radar2ego"].append(radar2ego)
+
+                    radar2lidar = np.eye(4).astype(np.float32)
+                    radar2lidar[:3, :3] = radar_info["sensor2lidar_rotation"]
+                    radar2lidar[:3, 3] = radar_info["sensor2lidar_translation"]
+                    data["radar2lidar"].append(radar2lidar)
+                    
             data_info_list.append(data)
 
         input_dict["curr"] = data_info_list[0]

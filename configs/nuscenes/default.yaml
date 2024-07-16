@@ -50,7 +50,7 @@ map_classes:
 input_modality:
   use_lidar: true
   use_camera: true
-  use_radar: false
+  use_radar: true
   use_map: false
   use_external: false
 
@@ -66,6 +66,9 @@ train_pipeline:
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}
     load_augmented: ${load_augmented}
+    sequential: ${sequential}
+  -
+    type: LoadRadarPointsFromFile
     sequential: ${sequential}
   -
     type: LoadPointsFromMultiSweeps
