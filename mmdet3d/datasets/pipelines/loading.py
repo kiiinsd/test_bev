@@ -3,6 +3,7 @@ from typing import Any, Dict, Tuple
 
 import mmcv
 import numpy as np
+from numpy.lib.recfunctions import structured_to_unstructured
 from nuscenes.map_expansion.map_api import NuScenesMap
 from nuscenes.map_expansion.map_api import locations as LOCATIONS
 from PIL import Image
@@ -609,21 +610,50 @@ class LoadRadarPointsFromFile:
     def __init__(
             self,
             coord_type,
-            load_dim = 5,
-            use_dim = 5,
+            load_dim = 18,
+            use_dim = [0, 1, 2],
             sequential = False,
         ):
-        if isinstance(use_dim, int):
-            use_dim = list(range(use_dim))
-        assert (
-            max(use_dim) < load_dim
-        ), f"Expect all used dimensions < {load_dim}, got {use_dim}"
         assert coord_type in ["CAMERA", "LIDAR", "DEPTH"]
-
         self.coord_type = coord_type
-        self.load_dim = load_dim
-        self.use_dim = use_dim
         self.sequential = sequential
+    
+    def _load_radar_points(self, radar_path):
+        mmcv.check_file_exist(radar_path)
+        assert radar_path.endswith(".pcd")
+        with open(radar_path, 'rb') as f:
+            while True:
+                line = f.readline().decode('utf-8')
+                if line.startswith("FIELDS"):
+                    field_list = line.split()[1:]
+                if line.startswith("SIZE"):
+                    size_list = line.split()[1:]
+                if line.startswith("TYPE"):
+                    type_list = line.lower().split()[1:]
+                if line.startswith("DATA"):
+                    break
+            
+            dtype =  np.dtype([(f, t + s) for f, t, s in zip(field_list, type_list, size_list)])
+            points = np.fromfile(f, dtype=dtype)
+            cols = ['x', 'y', 'z']
+            points = structured_to_unstructured(points[cols])
+        return points
+    
+    def _transform_into_lidar_coord(
+            self,
+            radar_points,
+            radar2lidar
+    ):
+        points_in_lidar_coord = []
+        for points, r2l in zip(radar_points, radar2lidar):
+            rot_mat = r2l[:3, :3]
+            trans_vec = r2l[:3, 3]
+            scale = r2l[3, 3]
+            points = points @ rot_mat.T
+            points += trans_vec
+
+        return torch.
+        
     
     def __call__(self, results):
         num_frames = 1
@@ -637,14 +667,20 @@ class LoadRadarPointsFromFile:
             else:
                 results_ = results["adjacent"][frame-1]
 
-            points_in_lidar_coord = []
-            for i in range(results_["radar_paths"]):
-                radar_path = results_["radar_paths"][i]
-                mmcv.check_file_exist(radar_path)
-                points = np.fromfile(radar_path, dtype=np.float32)
-                points = points.reshape(-1, self.load_dim)
-                radar2liadr = results_["radar2lidar"][i]
-
-
+            radar_points = []
+            for radar_path in results_["radar_paths"]:
+                points = self._load_radar_points(radar_path)
+                points_class = get_points_type(self.coord_type)
+                points = points_class(
+                    points, points_dim=points.shape[-1], attribute_dims=None
+                )
+                radar_points.append(points)
+            
+            self._transform_into_lidar_coord(radar_points, results_["radar2lidar"])
+            
+            if frame == 0:
+                results["curr"]["radar_points"] = points
+            else:
+                results["adjacent"][frame-1]["radar_points"] = points
 
         return results

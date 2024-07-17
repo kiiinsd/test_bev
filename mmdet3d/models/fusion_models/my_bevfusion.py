@@ -34,13 +34,6 @@ class My_BEVFusion(BEVFusion):
         super().__init__(encoders, fuser, decoder, heads, **kwargs)
         self.num_frames = adj_frame_num + 1
         self.sequential = sequential
-        if self.sequential:
-            in_channels = [self.num_frames * 256]
-            temp_fuser_cfg = fuser
-            temp_fuser_cfg.update(in_channels=in_channels)
-            # decoder_backbone_cfg["in_channels"] = 256 * self.num_frames
-            # self.decoder["backbone"] = build_backbone(decoder_backbone_cfg)
-            self.temporal_fuser = build_fuser(temp_fuser_cfg)
         self.grid = None
         self.xbound = encoders["camera"]["vtransform"]["xbound"]
         self.ybound = encoders["camera"]["vtransform"]["ybound"]
@@ -137,7 +130,7 @@ class My_BEVFusion(BEVFusion):
                 feature_list[frame] = self.align_feature(feature_list[frame],
                                                          [lidar2egos[0], lidar2egos[frame]],
                                                          [ego2globals[0], ego2globals[frame]])
-            x = self.temporal_fuser(feature_list)
+            x = self.fuser(feature_list)
                     
         else:
             x = self.extract_bev_feature(
