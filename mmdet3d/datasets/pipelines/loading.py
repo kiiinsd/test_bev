@@ -651,8 +651,10 @@ class LoadRadarPointsFromFile:
             scale = r2l[3, 3]
             points = points @ rot_mat.T
             points += trans_vec
+            points *= scale
+            points_in_lidar_coord.extend(points)
 
-        return torch.
+        return 
         
     
     def __call__(self, results):
@@ -670,10 +672,10 @@ class LoadRadarPointsFromFile:
             radar_points = []
             for radar_path in results_["radar_paths"]:
                 points = self._load_radar_points(radar_path)
-                points_class = get_points_type(self.coord_type)
-                points = points_class(
-                    points, points_dim=points.shape[-1], attribute_dims=None
-                )
+                # points_class = get_points_type(self.coord_type)
+                # points = points_class(
+                #     points, points_dim=points.shape[-1], attribute_dims=None
+                # )
                 radar_points.append(points)
             
             self._transform_into_lidar_coord(radar_points, results_["radar2lidar"])
