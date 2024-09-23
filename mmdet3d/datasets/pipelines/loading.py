@@ -652,9 +652,10 @@ class LoadRadarPointsFromFile:
             points = points @ rot_mat.T
             points += trans_vec
             points *= scale
-            points_in_lidar_coord.extend(points)
+            points_in_lidar_coord.append(points)
 
-        return 
+        points_in_lidar_coord = np.concatenate(points_in_lidar_coord)
+        return points_in_lidar_coord
         
     
     def __call__(self, results):
@@ -678,11 +679,16 @@ class LoadRadarPointsFromFile:
                 # )
                 radar_points.append(points)
             
-            self._transform_into_lidar_coord(radar_points, results_["radar2lidar"])
+            radar_points = self._transform_into_lidar_coord(radar_points, results_["radar2lidar"])
             
+            points_class = get_points_type(self.coord_type)
+            radar_points = points_class(
+                radar_points, points_dim=radar_points.shape[-1]
+            )
+
             if frame == 0:
-                results["curr"]["radar_points"] = points
+                results["curr"]["radar_points"] = radar_points
             else:
-                results["adjacent"][frame-1]["radar_points"] = points
+                results["adjacent"][frame-1]["radar_points"] = radar_points
 
         return results
