@@ -6,7 +6,7 @@ import mmcv
 import numpy as np
 import torch
 from mmcv import Config
-from mmcv.parallel import MMDistributedDataParallel
+from mmcv.parallel import MMDistributedDataParallel, MMDataParallel
 from mmcv.runner import load_checkpoint
 from torchpack import distributed as dist
 from torchpack.utils.config import configs
@@ -17,6 +17,7 @@ from mmdet3d.core import LiDARInstance3DBoxes
 from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
+from mmdet3d.apis import single_gpu_test
 
 
 def recursive_eval(obj, globals=None):
@@ -37,7 +38,7 @@ def recursive_eval(obj, globals=None):
 
 
 def main() -> None:
-    dist.init()
+    #dist.init()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config", metavar="FILE")
@@ -56,7 +57,7 @@ def main() -> None:
     cfg = Config(recursive_eval(configs), filename=args.config)
 
     torch.backends.cudnn.benchmark = cfg.cudnn_benchmark
-    torch.cuda.set_device(dist.local_rank())
+    torch.cuda.set_device(torch.cuda.current_device())
 
     # build the dataloader
     dataset = build_dataset(cfg.data[args.split])
@@ -64,7 +65,7 @@ def main() -> None:
         dataset,
         samples_per_gpu=1,
         workers_per_gpu=cfg.data.workers_per_gpu,
-        dist=True,
+        dist=False,
         shuffle=False,
     )
 
@@ -73,11 +74,14 @@ def main() -> None:
         model = build_model(cfg.model)
         load_checkpoint(model, args.checkpoint, map_location="cpu")
 
-        model = MMDistributedDataParallel(
-            model.cuda(),
-            device_ids=[torch.cuda.current_device()],
-            broadcast_buffers=False,
+        model = MMDataParallel(
+            model, device_ids=[0]
         )
+        # model = MMDistributedDataParallel(
+        #     model.cuda(),
+        #     device_ids=[torch.cuda.current_device()],
+        #     broadcast_buffers=False,
+        # )
         model.eval()
 
     for data in tqdm(dataflow):
@@ -85,8 +89,10 @@ def main() -> None:
         name = "{}-{}".format(metas["timestamp"], metas["token"])
 
         if args.mode == "pred":
-            with torch.inference_mode():
-                outputs = model(**data)
+            outputs = single_gpu_test(model, dataflow)
+            # with torch.inference_mode():
+            #     outputs = model(**data)
+            outputs = dataset.evaluate(outputs)
 
         if args.mode == "gt" and "gt_bboxes_3d" in data:
             bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
