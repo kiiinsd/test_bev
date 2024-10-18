@@ -635,7 +635,7 @@ class LoadRadarPointsFromFile:
             
             dtype =  np.dtype([(f, t + s) for f, t, s in zip(field_list, type_list, size_list)])
             points = np.fromfile(f, dtype=dtype)
-            cols = ['x', 'y', 'z']
+            cols = ['x', 'y', 'z', 'rcs', 'v_x', 'v_y']
             points = structured_to_unstructured(points[cols])
         return points
     
