@@ -234,6 +234,7 @@ class NuScenesDataset(Custom3DDataset):
                 sample_idx=info['token'],
                 lidar_path=info["lidar_path"],
                 sweeps=info["sweeps"],
+                radar_sweeps=info["radar_sweeps"],
                 timestamp=info["timestamp"],
                 location=info["location"],
             )
@@ -298,9 +299,11 @@ class NuScenesDataset(Custom3DDataset):
                 data["radar_paths"] = []
                 data["radar2ego"] = []
                 data["radar2lidar"] = []
+                data["radar_ts"] = []
 
                 for _, radar_info in info["radars"].items():
                     data["radar_paths"].append(radar_info["data_path"])
+                    data["radar_ts"].append(radar_info["timestamp"])
 
                     radar2ego = np.eye(4).astype(np.float32)
                     radar2ego[:3, :3] = Quaternion(

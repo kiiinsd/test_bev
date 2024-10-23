@@ -68,17 +68,22 @@ train_pipeline:
     load_augmented: ${load_augmented}
     sequential: ${sequential}
   -
-    type: LoadRadarPointsFromFile
-    coord_type: LIDAR
-    sequential: ${sequential}
-  -
     type: LoadPointsFromMultiSweeps
-    sweeps_num: 9
+    sweeps_num: 5
     load_dim: ${load_dim}
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}
     pad_empty_sweeps: true
     remove_close: true
+    load_augmented: ${load_augmented}
+    sequential: ${sequential}
+  -
+    type: LoadRadarPointsFromFile
+    coord_type: LIDAR
+    sequential: ${sequential}
+  -
+    type: LoadRadarPointsFromMultiSweeps
+    sweep_num: 10
     load_augmented: ${load_augmented}
     sequential: ${sequential}
   -
@@ -189,7 +194,7 @@ train_pipeline:
     keys:
       - img
       - points
-      - radar_points
+      # - radar_points
       - points_num
       - gt_bboxes_3d
       - gt_labels_3d
@@ -220,7 +225,7 @@ test_pipeline:
     sequential: ${sequential}
   -
     type: LoadPointsFromMultiSweeps
-    sweeps_num: 9
+    sweeps_num: 5
     load_dim: ${load_dim}
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}

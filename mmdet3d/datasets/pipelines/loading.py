@@ -3,9 +3,9 @@ from typing import Any, Dict, Tuple
 
 import mmcv
 import numpy as np
-from numpy.lib.recfunctions import structured_to_unstructured
 from nuscenes.map_expansion.map_api import NuScenesMap
 from nuscenes.map_expansion.map_api import locations as LOCATIONS
+from nuscenes.utils.data_classes import RadarPointCloud
 from PIL import Image
 
 
@@ -609,53 +609,33 @@ class LoadAnnotations3D(LoadAnnotations):
 class LoadRadarPointsFromFile:
     def __init__(
             self,
-            coord_type,
-            load_dim = 18,
-            use_dim = [0, 1, 2],
+            coord_type = "LIDAR",
+            use_dim = [0, 1, 2, 5],
             sequential = False,
         ):
         assert coord_type in ["CAMERA", "LIDAR", "DEPTH"]
         self.coord_type = coord_type
+        self.use_dim = use_dim
         self.sequential = sequential
     
-    def _load_radar_points(self, radar_path):
+    def _load_points(self, radar_path):
         mmcv.check_file_exist(radar_path)
         assert radar_path.endswith(".pcd")
-        with open(radar_path, 'rb') as f:
-            while True:
-                line = f.readline().decode('utf-8')
-                if line.startswith("FIELDS"):
-                    field_list = line.split()[1:]
-                if line.startswith("SIZE"):
-                    size_list = line.split()[1:]
-                if line.startswith("TYPE"):
-                    type_list = line.lower().split()[1:]
-                if line.startswith("DATA"):
-                    break
-            
-            dtype =  np.dtype([(f, t + s) for f, t, s in zip(field_list, type_list, size_list)])
-            points = np.fromfile(f, dtype=dtype)
-            cols = ['x', 'y', 'z', 'rcs', 'v_x', 'v_y']
-            points = structured_to_unstructured(points[cols])
-        return points
+        points = RadarPointCloud.from_file(radar_path).points.T
+        return points[:,self.use_dim]
     
     def _transform_into_lidar_coord(
             self,
-            radar_points,
+            points,
             radar2lidar
     ):
-        points_in_lidar_coord = []
-        for points, r2l in zip(radar_points, radar2lidar):
-            rot_mat = r2l[:3, :3]
-            trans_vec = r2l[:3, 3]
-            scale = r2l[3, 3]
-            points = points @ rot_mat.T
-            points += trans_vec
-            points *= scale
-            points_in_lidar_coord.append(points)
-
-        points_in_lidar_coord = np.concatenate(points_in_lidar_coord)
-        return points_in_lidar_coord
+        coords = points[:, :3]
+        rot_mat = radar2lidar[:3, :3]
+        trans_vec = radar2lidar[:3, 3]
+        coords = coords @ rot_mat.T
+        coords += trans_vec
+        points[:,:3] = coords
+        return points
         
     
     def __call__(self, results):
@@ -666,21 +646,20 @@ class LoadRadarPointsFromFile:
         
         for frame in range(num_frames):
             if frame == 0:
-                results_ = results["curr"]
+                _results = results["curr"]
             else:
-                results_ = results["adjacent"][frame-1]
-
-            radar_points = []
-            for radar_path in results_["radar_paths"]:
-                points = self._load_radar_points(radar_path)
-                # points_class = get_points_type(self.coord_type)
-                # points = points_class(
-                #     points, points_dim=points.shape[-1], attribute_dims=None
-                # )
-                radar_points.append(points)
+                _results = results["adjacent"][frame-1]
             
-            radar_points = self._transform_into_lidar_coord(radar_points, results_["radar2lidar"])
+            ts = 1e-6 * _results["timestamp"]
+            points_list = []
+            for path, r2l, radar_ts in zip(_results["radar_paths"], _results["radar2lidar"], _results["radar_ts"]):
+                points = self._load_points(path)
+                points = self._transform_into_lidar_coord(points, r2l)
+                time = np.repeat(ts - radar_ts * 1e-6, points.shape[0]).T
+                points = np.column_stack((points, time))
+                points_list.append(points)
             
+            radar_points = np.concatenate(points_list)
             points_class = get_points_type(self.coord_type)
             radar_points = points_class(
                 radar_points, points_dim=radar_points.shape[-1]
@@ -692,3 +671,79 @@ class LoadRadarPointsFromFile:
                 results["adjacent"][frame-1]["radar_points"] = radar_points
 
         return results
+
+@PIPELINES.register_module()
+class LoadRadarPointsFromMultiSweeps:
+    def __init__(
+        self,
+        sweep_num = 10,
+        test_mode = False,
+        load_augmented = None,
+        sequential = False
+    ):
+        self.sweep_num = sweep_num
+        self.test_mode = test_mode
+        self.load_augmented = load_augmented
+        self.sequential = sequential
+    
+    def _load_points(self, radar_path):
+        mmcv.check_file_exist(radar_path)
+        assert radar_path.endswith(".pcd")
+        points = RadarPointCloud.from_file(radar_path).points.T
+        return points[:,[0, 1, 2, 5]]
+    
+    def __call__(self, results):
+        num_frames = 1
+        if self.sequential:
+            assert "adjacent" in results
+            num_frames += len(results["adjacent"])
+        radar_types = [
+            "RADAR_BACK_LEFT",
+            "RADAR_BACK_RIGHT",
+            "RADAR_FRONT",
+            "RADAR_FRONT_LEFT",
+            "RADAR_FRONT_RIGHT",
+        ]
+        
+        for frame in range(num_frames):
+            if frame == 0:
+                _results = results["curr"]
+            else:
+                _results = results["adjacent"][frame-1]
+            points = _results["radar_points"]
+            sweep_points_list = [points]
+            ts = _results["timestamp"] * 1e-6
+            
+            if len(_results["sweeps"]) <= self.sweep_num:
+                choices = np.arange(len(_results["sweeps"]))
+            elif self.test_mode:
+                choices = np.arange(self.sweep_num)
+            else:
+                if not self.load_augmented:
+                    choices = np.random.choice(
+                        len(_results["sweeps"], self.sweep_num, replace=False)
+                    )
+                else:
+                    choices = np.random.choice(
+                        len(_results["sweeps"] - 1, self.sweep_num, replace=False)
+                    )
+            for idx in choices:
+                for radar in radar_types:
+                    sweep = _results["radar_sweeps"][radar][idx]
+                    points_sweep = self._load_points(sweep["data_path"])
+                    sweep_ts = sweep["timestamp"] * 1e-6
+                    time = np.repeat(ts - sweep_ts, points_sweep.shape[0])
+                    points_sweep[:, :3] = points_sweep[:, :3] @ sweep["sensor2lidar_rotation"].T
+                    points_sweep[:, :3] += sweep["sensor2lidar_translation"]
+                    points_sweep = np.column_stack((points_sweep, time))
+                    points_sweep = points.new_point(points_sweep)
+                    sweep_points_list.append(points_sweep)
+            
+            points = points.cat(sweep_points_list)
+            if frame == 0:
+                results["curr"]["points"] = points
+            else:
+                results["adjacent"][frame-1]["points"] = points
+        
+        return results
+ 

@@ -194,6 +194,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, max_sweeps=
             "lidar_path": lidar_path,
             "token": sample["token"],
             "sweeps": [],
+            "radar_sweeps": dict(),
             "cams": dict(),
             "radars": dict(),
             "lidar2ego_translation": cs_record["translation"],
@@ -258,6 +259,23 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, max_sweeps=
             else:
                 break
         info["sweeps"] = sweeps
+        # obtain radar sweeps
+        radar_sweeps = dict()
+        for radar in radar_types:
+            sd_rec = nusc.get("sample_data", sample["data"][radar])
+            sweeps = []
+            while len(sweeps) < max_sweeps:
+                if not sd_rec["prev"] == "":
+                    sweep = obtain_sensor2top(
+                        nusc, sd_rec["prev"], l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, radar
+                    )
+                    sweeps.append(sweep)
+                    sd_rec = nusc.get("sample_data", sd_rec["prev"])
+                else:
+                    break
+            radar_sweeps[radar] = sweeps
+        info["radar_sweeps"] = radar_sweeps
+
         # obtain annotation
         if not test:
             annotations = [
