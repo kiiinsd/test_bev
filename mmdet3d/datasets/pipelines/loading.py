@@ -666,9 +666,9 @@ class LoadRadarPointsFromFile:
             )
 
             if frame == 0:
-                results["curr"]["radar_points"] = radar_points
+                results["curr"]["points"] = radar_points
             else:
-                results["adjacent"][frame-1]["radar_points"] = radar_points
+                results["adjacent"][frame-1]["points"] = radar_points
 
         return results
 
@@ -710,22 +710,22 @@ class LoadRadarPointsFromMultiSweeps:
                 _results = results["curr"]
             else:
                 _results = results["adjacent"][frame-1]
-            points = _results["radar_points"]
+            points = _results["points"]
             sweep_points_list = [points]
             ts = _results["timestamp"] * 1e-6
-            
-            if len(_results["sweeps"]) <= self.sweep_num:
-                choices = np.arange(len(_results["sweeps"]))
+            length = min([len(x) for x in _results["radar_sweeps"].values()])
+            if length <= self.sweep_num:
+                choices = np.arange(length)
             elif self.test_mode:
                 choices = np.arange(self.sweep_num)
             else:
                 if not self.load_augmented:
                     choices = np.random.choice(
-                        len(_results["sweeps"], self.sweep_num, replace=False)
+                        length, self.sweep_num, replace=False
                     )
                 else:
                     choices = np.random.choice(
-                        len(_results["sweeps"] - 1, self.sweep_num, replace=False)
+                        length - 1, self.sweep_num, replace=False
                     )
             for idx in choices:
                 for radar in radar_types:

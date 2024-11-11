@@ -130,7 +130,7 @@ class My_BEVFusion(BEVFusion):
                 feature_list[frame] = self.align_feature(feature_list[frame],
                                                          [lidar2egos[0], lidar2egos[frame]],
                                                          [ego2globals[0], ego2globals[frame]])
-            x = self.fuser(feature_list)
+            x = torch.cat(feature_list, dim=1)
                     
         else:
             x = self.extract_bev_feature(

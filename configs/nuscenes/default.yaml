@@ -59,24 +59,24 @@ train_pipeline:
     type: LoadMultiViewImageFromFiles
     to_float32: true
     sequential: ${sequential}
-  -
-    type: LoadPointsFromFile
-    coord_type: LIDAR
-    load_dim: ${load_dim}
-    use_dim: ${use_dim}
-    reduce_beams: ${reduce_beams}
-    load_augmented: ${load_augmented}
-    sequential: ${sequential}
-  -
-    type: LoadPointsFromMultiSweeps
-    sweeps_num: 5
-    load_dim: ${load_dim}
-    use_dim: ${use_dim}
-    reduce_beams: ${reduce_beams}
-    pad_empty_sweeps: true
-    remove_close: true
-    load_augmented: ${load_augmented}
-    sequential: ${sequential}
+  # -
+  #   type: LoadPointsFromFile
+  #   coord_type: LIDAR
+  #   load_dim: ${load_dim}
+  #   use_dim: ${use_dim}
+  #   reduce_beams: ${reduce_beams}
+  #   load_augmented: ${load_augmented}
+  #   sequential: ${sequential}
+  # -
+  #   type: LoadPointsFromMultiSweeps
+  #   sweeps_num: 10
+  #   load_dim: ${load_dim}
+  #   use_dim: ${use_dim}
+  #   reduce_beams: ${reduce_beams}
+  #   pad_empty_sweeps: true
+  #   remove_close: true
+  #   load_augmented: ${load_augmented}
+  #   sequential: ${sequential}
   -
     type: LoadRadarPointsFromFile
     coord_type: LIDAR
@@ -215,29 +215,38 @@ test_pipeline:
     type: LoadMultiViewImageFromFiles
     to_float32: true
     sequential: ${sequential}
+  # -
+  #   type: LoadPointsFromFile
+  #   coord_type: LIDAR
+  #   load_dim: ${load_dim}
+  #   use_dim: ${use_dim}
+  #   reduce_beams: ${reduce_beams}
+  #   load_augmented: ${load_augmented}
+  #   sequential: ${sequential}
+  # -
+  #   type: LoadPointsFromMultiSweeps
+  #   sweeps_num: 10
+  #   load_dim: ${load_dim}
+  #   use_dim: ${use_dim}
+  #   reduce_beams: ${reduce_beams}
+  #   pad_empty_sweeps: true
+  #   remove_close: true
+  #   load_augmented: ${load_augmented}
+  #   sequential: ${sequential}
   -
-    type: LoadPointsFromFile
+    type: LoadRadarPointsFromFile
     coord_type: LIDAR
-    load_dim: ${load_dim}
-    use_dim: ${use_dim}
-    reduce_beams: ${reduce_beams}
-    load_augmented: ${load_augmented}
     sequential: ${sequential}
   -
-    type: LoadPointsFromMultiSweeps
-    sweeps_num: 5
-    load_dim: ${load_dim}
-    use_dim: ${use_dim}
-    reduce_beams: ${reduce_beams}
-    pad_empty_sweeps: true
-    remove_close: true
+    type: LoadRadarPointsFromMultiSweeps
+    sweep_num: 10
     load_augmented: ${load_augmented}
     sequential: ${sequential}
   -
     type: LoadAnnotations3D
     with_bbox_3d: true
     with_label_3d: true
-    with_attr_label: False
+    with_attr_label: false
   -
     type: ImageAug3D
     final_dim: ${image_size}
