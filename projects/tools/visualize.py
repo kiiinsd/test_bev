@@ -61,7 +61,7 @@ def main() -> None:
     distributed = False
 
     # build the dataloader
-    dataset = build_dataset(cfg.data[args.split])
+    dataset = build_dataset(cfg.data["test"])
     dataflow = build_dataloader(
         dataset,
         samples_per_gpu=1,
@@ -86,7 +86,7 @@ def main() -> None:
 
     for data in tqdm(dataflow):
         metas = data["metas"].data[0][0]
-        name = "{}-{}".format(metas["timestamp"], metas["token"])
+        name = "{}".format(metas["timestamp"])
 
         if args.mode == "pred":
             with torch.inference_mode():

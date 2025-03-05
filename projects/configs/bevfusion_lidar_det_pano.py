@@ -2,6 +2,8 @@ _base_ = ['./_base_/default_runtime.py']
 custom_imports = dict(
     imports = [
         "projects.mmdet3d.datasets.pano_dataset",
+        "projects.mmdet3d.models.bevfusion_l",
+        "projects.mmdet3d.models.transfusion_simple"
     ],
     allow_failed_imports = False,
 )
@@ -54,7 +56,7 @@ input_modality = dict(
 )
 
 model = dict(
-    type = "BEVFusion",
+    type = "BEVFusion_lidar",
     encoders = dict(
         lidar = dict(
             voxelize = dict(
@@ -123,9 +125,9 @@ model = dict(
             use_conv_for_no_stride = True,
         ),
     ),
-    head = dict(
+    heads = dict(
         object = dict(
-            type = "TransFusionHead",
+            type = "TransFusion_simple",
             num_proposals = 200,
             auxiliary = True,
             in_channels = 512,
@@ -139,9 +141,38 @@ model = dict(
             bn_momentum = 0.1,
             activation = "relu",
             train_cfg = dict(
-
+                dataset = "PanoSim",
+                point_cloud_range = point_cloud_range,
+                grid_size = [1440, 1440, 41],
+                voxel_size = voxel_size,
+                out_size_factor = 8,
+                gaussian_overlap = 0.1,
+                min_radius = 2,
+                pos_weight = -1,
+                code_weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2],
+                assigner = dict(
+                    type = "HungarianAssigner3D",
+                    iou_calculator = dict(
+                        type = "BboxOverlaps3D",
+                        coordinate = "lidar",
+                    ),
+                ),
+                cls_cost = dict(
+                    type = "FocalLossCost",
+                    gamma = 2.0,
+                    alpha = 0.25,
+                    weight = 0.15,
+                ),
+                reg_cost = dict(
+                    type = "BBoxBEVL1Cost",
+                    weight = 0.25,
+                ),
+                iou_cost = dict(
+                    type = "IoU3DCost",
+                    weight = 0.25,
+                ),
             ),
-            test_config = dict(
+            test_cfg = dict(
                 dataset = "PanoSim",
                 grid_size = [1440, 1440, 41],
                 out_size_factor = 8,
@@ -185,6 +216,7 @@ model = dict(
             ),
         ),
     ),
+    fuser = None,
 )
 
 test_pipeline = [
@@ -209,18 +241,31 @@ test_pipeline = [
         keys = [
             "points",
             "points_num",
+            
         ],
         meta_keys = [
-
         ],
     ),
 ]
 
 data = dict(
     samples_per_gpu = 2,
-    workers_per_gpu = 2,
+    workers_per_gpu = 1,
     train = dict(
-
+        type = "CBGSDataset",
+        dataset = dict(
+            type = dataset_type,
+            dataset_root = dataset_root,
+            ann_file = dataset_root + "pano_infos_train.pkl",
+            pipeline = test_pipeline,
+            object_classes = object_classes,
+            map_classes = map_classes,
+            modality = input_modality,
+            test_mode = False,
+            box_type_3d = "LiDAR",
+            sequential = sequential,
+            adj_frame_num = adj_frame_num,
+        ),
     ),
     val = dict(
         type = dataset_type,

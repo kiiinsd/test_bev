@@ -15,7 +15,7 @@ class PanoDataset(Custom3DDataset):
         map_classes=None,
         modality=None, 
         box_type_3d="LiDAR", 
-        filter_empty_gt=True, 
+        filter_empty_gt=False, 
         test_mode=False,
         use_valid_flag=False,
         sequential=False,
@@ -69,14 +69,14 @@ class PanoDataset(Custom3DDataset):
 
     def get_data_info(self, index:int) -> Dict[str, Any]:
         input_dict = dict()
-        annos = self.get_anno_info()
+        annos = self.get_anno_info(index)
         input_dict["ann_info"] = annos
         info = self.data_infos[index]
         data = dict(
             lidar_path = info["lidar_path"],
             timestamp = info["timestamp"],
         )
-        input_dict['curr'] = data
+        input_dict["curr"] = data
         return input_dict
 
     def get_anno_info(self, index):

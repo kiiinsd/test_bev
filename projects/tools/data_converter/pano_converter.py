@@ -7,14 +7,14 @@ def create_pano_infos(
 ):
     assert osp.exists(root_path)
     lidar_path = root_path + "/lidar"
-    train_set = set(
+    val_set = set(
         [
             file for file in os.listdir(lidar_path)
         ]
     )
-    val_set = set({})
+    train_set = set({})
 
-    tran_infos, val_infos = _fill_trainval_infos(root_path, train_set, val_set)
+    tran_infos, val_infos = _fill_trainval_infos(lidar_path, train_set, val_set)
     metadata = dict(version="lidar-test")
     print("train_samples: {}, val_samples: {}".format(len(tran_infos), len(val_infos)))
     
