@@ -203,7 +203,7 @@ class TransFusion_simple(TransFusionHead):
                 new_res[key] = ret_dicts[0][key]
         return [new_res]
 
-    def forward(self, feats):
+    def forward(self, feats, ):
         """Forward pass.
         Args:
             feats (list[torch.Tensor]): Multi-level features, e.g.,

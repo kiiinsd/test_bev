@@ -127,7 +127,7 @@ model = dict(
     ),
     heads = dict(
         object = dict(
-            type = "TransFusion_simple",
+            type = "TransFusionHead",
             num_proposals = 200,
             auxiliary = True,
             in_channels = 512,

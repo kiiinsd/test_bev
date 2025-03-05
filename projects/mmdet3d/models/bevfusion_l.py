@@ -22,6 +22,7 @@ class BEVFusion_lidar(BEVFusion):
     def forward(
         self,
         points,
+        metas,
         **kwargs
     ):
         features = []
@@ -69,8 +70,8 @@ class BEVFusion_lidar(BEVFusion):
             outputs = [{} for _ in range(batch_size)]
             for type, head in self.heads.items():
                 if type == "object":
-                    pred_dict = head(x)
-                    bboxes = head.get_bboxes(pred_dict)
+                    pred_dict = head(x, metas)
+                    bboxes = head.get_bboxes(pred_dict, metas)
                     for k, (boxes, scores, labels) in enumerate(bboxes):
                         outputs[k].update(
                             {
