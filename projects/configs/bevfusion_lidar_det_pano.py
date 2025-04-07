@@ -263,6 +263,12 @@ test_pipeline = [
         sequential = sequential,
     ),
     dict(
+        type = 'LoadAnnotations3D',
+        with_bbox_3d = True,
+        with_label_3d = True,
+        with_attr_label = False
+    ),
+    dict(
         type = "ImageAug3D",
         final_dim = image_size,
         resize_lim = augment2d["resize"][1],
@@ -286,6 +292,14 @@ test_pipeline = [
         sequential = sequential,
     ),
     dict(
+        type = 'ObjectRangeFilter',
+        point_cloud_range = point_cloud_range,
+    ),
+    dict(
+        type = 'ObjectNameFilter',
+        classes = object_classes,
+    ),
+    dict(
         type = "ImageNormalize",
         mean = [0.485, 0.456, 0.406],
         std = [0.229, 0.224, 0.225],
@@ -305,13 +319,18 @@ test_pipeline = [
             "img",
             "points",
             "points_num",
+            'gt_bboxes_3d',
+            'gt_labels_3d',
         ],
         meta_keys = [
             "camera_intrinsics",
+            'camera2ego',
             "lidar2ego",
             "lidar2camera",
             "camera2lidar",
             "lidar2image",
+            'img_aug_matrix',
+            'lidar_aug_matrix',
             "ego2global",
         ],
     ),

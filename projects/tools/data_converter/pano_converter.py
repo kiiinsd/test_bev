@@ -1,124 +1,196 @@
 import os
+from os import path as osp
+
 import mmcv
 import json
 import numpy as np
-from os import path as osp
+from pyquaternion import Quaternion
+
+from projects.mmdet3d.datasets import PanoDataset
+from projects.PanoSim import PanoSim
 
 def create_pano_infos(
-    root_path, info_prefix
+    root_path, info_prefix, version='v1.0', max_sweeps=9
 ):
-    assert osp.exists(root_path)
-    lidar_path = root_path + "/samples/LIDAR"
-    val_set = set(
-        [
-            file.strip(".pcd.bin") for file in os.listdir(lidar_path)
-        ]
-    )
-    train_set = set({})
+    pano = PanoSim(data_root=root_path, version=version)
+    train_scenes = set([])
+    val_scenes = set([s['token'] for s in pano.scene])
 
-    tran_infos, val_infos = _fill_trainval_infos(root_path, train_set, val_set)
-    metadata = dict(version="lidar-test")
-    print("train_samples: {}, val_samples: {}".format(len(tran_infos), len(val_infos)))
+    tran_infos, val_infos = _fill_trainval_infos(pano, train_scenes, val_scenes)
+    metadata = dict(version='lidar-test')
+    print('train_samples: {}, val_samples: {}'.format(len(tran_infos), len(val_infos)))
     
     data = dict(infos = tran_infos, metadata=metadata)
-    info_path = osp.join(root_path, "{}_infos_train.pkl".format(info_prefix))
+    info_path = osp.join(root_path, '{}_infos_train.pkl'.format(info_prefix))
     mmcv.dump(data, info_path)
-    data["infos"] = val_infos
-    info_path = osp.join(root_path, "{}_infos_val.pkl".format(info_prefix))
+    data['infos'] = val_infos
+    info_path = osp.join(root_path, '{}_infos_val.pkl'.format(info_prefix))
     mmcv.dump(data, info_path)
 
 
 def _fill_trainval_infos(
-    root_path, train_set, val_set, test=True, max_sweeps=10
+    pano: PanoSim, train_scenes, val_scenes, test=False, max_sweeps=9
 ):
-    train_infos = []
-    val_infos = []
-    sample_path = osp.join(root_path, "samples")
-    sweep_path = osp.join(root_path, "sweeps")
+    train_info = []
+    val_info = []
 
-    cs_path = osp.join(root_path, "calibrated_sensor.json")
-    assert osp.exists(cs_path)
-    with open(cs_path, "r", encoding="utf-8") as f:
-        cs_record = json.load(f)
+    for sample in mmcv.track_iter_progress(pano.sample):
+        lidar_token = sample['data']['LIDAR_TOP']
+        sd_rec = pano.get('sample_data', sample['data']['LIDAR_TOP'])
+        cs_record = pano.get('calibrated_sensor', sd_rec['calibrated_sensor_token'])
+        pose_record = pano.get('ego_pose', sd_rec['ego_pose_token'])
+        lidar_path, boxes, _ = pano.get_sample_data(lidar_token)
 
-    pose_path = osp.join(root_path, "ego_pose.json")
-    assert osp.exists(pose_path)
-    with open(pose_path, "r", encoding="utf-8") as f:
-        pose_record = json.load(f)
+        mmcv.check_file_exist(lidar_path)
 
-    timestamps = set.union(train_set, val_set)
-    for ts in timestamps:
         info = {
-            "lidar_path": osp.join(sample_path, "LIDAR", ts+".pcd.bin"),
-            "timestamp": int(ts),
-            "sweeps": [],
-            "cams": dict(),
-            "lidar2ego_translation": cs_record["LIDAR"]["translation"],
-            "lidar2ego_rotation": np.matrix(cs_record["LIDAR"]["rotation"]),
-            "ego2global_translation": pose_record[ts]["translation"],
-            "ego2global_rotation": np.matrix(pose_record[ts]["rotation"]),
+            'lidar_path': lidar_path,
+            'token': sample['token'],
+            'sweeps': [],
+            'cams': dict(),
+            'lidar2ego_translation': cs_record['translation'],
+            'lidar2ego_rotation': cs_record['rotation'],
+            'ego2global_translation': pose_record['translation'],
+            'ego2global_rotation': pose_record['rotation'],
+            'timestamp': sample['timestamp'],
+            # 'location': location,
+            'scene_token': sample['scene_token'],
         }
-        l2e_r_mat = info["lidar2ego_rotation"]
-        l2e_t = info["lidar2ego_translation"]
-        e2g_r_mat = info["ego2global_rotation"]
-        e2g_t = info["ego2global_translation"]
 
+        l2e_r = info['lidar2ego_rotation']
+        l2e_t = info['lidar2ego_translation']
+        e2g_r = info['ego2global_rotation']
+        e2g_t = info['ego2global_translation']
+        l2e_r_mat = Quaternion(l2e_r).rotation_matrix
+        e2g_r_mat = Quaternion(e2g_r).rotation_matrix
+
+        # obtain 6 image's information per frame
         camera_types = [
-            "CAM_FRONT",
-            "CAM_FRONT_RIGHT",
-            "CAM_FRONT_LEFT",
-            "CAM_BACK",
-            "CAM_BACK_LEFT",
-            "CAM_BACK_RIGHT",
+            'CAM_FRONT',
+            'CAM_FRONT_RIGHT',
+            'CAM_FRONT_LEFT',
+            'CAM_BACK',
+            'CAM_BACK_LEFT',
+            'CAM_BACK_RIGHT',
         ]
         for cam in camera_types:
-            camera_intrinsics = cs_record[cam]["cam_intrinsics"]
+            cam_token = sample['data'][cam]
+            cam_path, _, camera_intrinsics = pano.get_sample_data(cam_token)
             cam_info = obtain_sensor2top(
-                l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, cam, sample_path, ts, cs_record, pose_record
+                pano, cam_token, l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, cam
             )
             cam_info.update(camera_intrinsics=camera_intrinsics)
-            info["cams"].update({cam:cam_info})
+            info['cams'].update({cam: cam_info})
 
+        # obtain sweeps for a single key-frame
+        sd_rec = pano.get("sample_data", sample["data"]["LIDAR_TOP"])
         sweeps = []
         while len(sweeps) < max_sweeps:
-            curr_ts = ts
-            prev_ts = str(pose_record[curr_ts]["prev"])
-            if not prev_ts == "0":
+            if not sd_rec["prev"] == "":
                 sweep = obtain_sensor2top(
-                    l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, "LIDAR", sweep_path, prev_ts, cs_record, pose_record
+                    pano, sd_rec["prev"], l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, "lidar"
                 )
                 sweeps.append(sweep)
-                curr_ts = prev_ts
+                sd_rec = pano.get("sample_data", sd_rec["prev"])
             else:
                 break
         info["sweeps"] = sweeps
 
-        if ts in train_set:
-            train_infos.append(info)
-        if ts in val_set:
-            val_infos.append(info)
-    
-    return train_infos, val_infos
+        # obtain annotation
+        if not test:
+            annotations = [
+                pano.get("sample_annotation", token) for token in sample["anns"]
+            ]
+            locs = np.array([b.center for b in boxes]).reshape(-1, 3)
+            dims = np.array([b.wlh for b in boxes]).reshape(-1, 3)
+            rots = np.array([b.orientation.yaw_pitch_roll[0] for b in boxes]).reshape(
+                -1, 1
+            )
+            velocity = np.array(
+                [anno['vel'] for anno in annotations]
+            )
+            valid_flag = np.array(
+                [
+                    True
+                    # (anno["num_lidar_pts"] + anno["num_radar_pts"]) > 0
+                    for anno in annotations
+                ],
+                dtype=bool,
+            ).reshape(-1)
+            # convert velo from global to lidar
+            for i in range(len(boxes)):
+                velo = np.array([*velocity[i], 0.0])
+                velo = velo @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
+                velocity[i] = velo[:2]
+
+            names = [b.name for b in boxes]
+            for i in range(len(names)):
+                if names[i] in PanoDataset.NameMapping:
+                    names[i] = PanoDataset.NameMapping[names[i]]
+            names = np.array(names)
+            # we need to convert rot to SECOND format.
+            gt_boxes = np.concatenate([locs, dims, -rots - np.pi / 2], axis=1)
+            assert len(gt_boxes) == len(
+                annotations
+            ), f"{len(gt_boxes)}, {len(annotations)}"
+            info["gt_boxes"] = gt_boxes
+            info["gt_names"] = names
+            info["gt_velocity"] = velocity.reshape(-1, 2)
+            # info["num_lidar_pts"] = np.array([a["num_lidar_pts"] for a in annotations])
+            # info["num_radar_pts"] = np.array([a["num_radar_pts"] for a in annotations])
+            info["valid_flag"] = valid_flag
+
+        if sample["scene_token"] in train_scenes:
+            train_info.append(info)
+        else:
+            val_info.append(info)
+    return train_info, val_info
 
 def obtain_sensor2top(
-    l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, sensor_type, root_path, ts, cs_record, pose_record
+    pano, sensor_token, l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, sensor_type="lidar"
 ):
-    suffix = ".pcd.bin" if sensor_type == "LIDAR" else ".jpg"
-    data_path = osp.join(root_path, sensor_type, ts+suffix)
+    """Obtain the info with RT matric from general sensor to Top LiDAR.
+
+    Args:
+        pano (class): Dataset class in the PanoSim dataset.
+        sensor_token (str): Sample data token corresponding to the
+            specific sensor type.
+        l2e_t (np.ndarray): Translation from lidar to ego in shape (1, 3).
+        l2e_r_mat (np.ndarray): Rotation matrix from lidar to ego
+            in shape (3, 3).
+        e2g_t (np.ndarray): Translation from ego to global in shape (1, 3).
+        e2g_r_mat (np.ndarray): Rotation matrix from ego to global
+            in shape (3, 3).
+        sensor_type (str): Sensor to calibrate. Default: 'lidar'.
+
+    Returns:
+        sweep (dict): Sweep information after transformation.
+    """
+    sd_rec = pano.get("sample_data", sensor_token)
+    cs_record = pano.get("calibrated_sensor", sd_rec["calibrated_sensor_token"])
+    pose_record = pano.get("ego_pose", sd_rec["ego_pose_token"])
+    data_path = str(pano.get_sample_data_path(sd_rec["token"]))
+    if os.getcwd() in data_path:  # path from lyftdataset is absolute path
+        data_path = data_path.split(f"{os.getcwd()}/")[-1]  # relative path
     sweep = {
         "data_path": data_path,
         "type": sensor_type,
-        "sensor2ego_translation": cs_record[sensor_type]["translation"],
-        "sensor2ego_rotation": np.matrix(cs_record[sensor_type]["rotation"]),
-        "ego2global_translation": pose_record[ts]["translation"],
-        "ego2global_rotation": np.matrix(pose_record[ts]["rotation"]),
-        "timestamp": int(ts)
+        "sample_data_token": sd_rec["token"],
+        "sensor2ego_translation": cs_record["translation"],
+        "sensor2ego_rotation": cs_record["rotation"],
+        "ego2global_translation": pose_record["translation"],
+        "ego2global_rotation": pose_record["rotation"],
+        "timestamp": sd_rec["timestamp"],
     }
-    l2e_r_s_mat = sweep["sensor2ego_rotation"]
+    l2e_r_s = sweep["sensor2ego_rotation"]
     l2e_t_s = sweep["sensor2ego_translation"]
-    e2g_r_s_mat = sweep["ego2global_rotation"]
+    e2g_r_s = sweep["ego2global_rotation"]
     e2g_t_s = sweep["ego2global_translation"]
 
+    # obtain the RT from sensor to Top LiDAR
+    # sweep->ego->global->ego'->lidar
+    l2e_r_s_mat = Quaternion(l2e_r_s).rotation_matrix
+    e2g_r_s_mat = Quaternion(e2g_r_s).rotation_matrix
     R = (l2e_r_s_mat.T @ e2g_r_s_mat.T) @ (
         np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
     )
@@ -131,4 +203,4 @@ def obtain_sensor2top(
     )
     sweep["sensor2lidar_rotation"] = R.T  # points @ R.T + T
     sweep["sensor2lidar_translation"] = T
-    return sweep    
+    return sweep
