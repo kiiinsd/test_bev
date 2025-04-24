@@ -18,7 +18,7 @@ class PanoSim:
         self.version = version
         self.table_root = osp.join(self.data_root, self.version)
         self.table_names = ['category', 'sensor', 'calibrated_sensor', 'ego_pose', 'sample', 
-                            'sample_data', 'sample_annotation', 'instance']
+                            'sample_data', 'sample_annotation', 'instance', 'scene']
         
         # Explicitly assign tables to help the IDE determine valid class members.
         self.category = self.__load_table__('category')

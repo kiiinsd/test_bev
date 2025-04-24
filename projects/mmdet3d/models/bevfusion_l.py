@@ -50,22 +50,21 @@ class BEVFusion_lidar(BEVFusion):
         x = self.decoder["neck"](x)
 
         if self.training:
-            pass
-            # outputs = {}
-            # for type, head in self.heads.items():
-            #     if type == "object":
-            #         pred_dict = head(x, metas)
-            #         losses = head.loss(gt_bboxes_3d, gt_labels_3d, pred_dict)
-            #     elif type == "map":
-            #         losses = head(x, gt_masks_bev)
-            #     else:
-            #         raise ValueError(f"unsupported head: {type}")
-            #     for name, val in losses.items():
-            #         if val.requires_grad:
-            #             outputs[f"loss/{type}/{name}"] = val * self.loss_scale[type]
-            #         else:
-            #             outputs[f"stats/{type}/{name}"] = val
-            # return outputs
+            outputs = {}
+            for type, head in self.heads.items():
+                if type == "object":
+                    pred_dict = head(x, metas)
+                    losses = head.loss(gt_bboxes_3d, gt_labels_3d, pred_dict)
+                elif type == "map":
+                    losses = head(x, gt_masks_bev)
+                else:
+                    raise ValueError(f"unsupported head: {type}")
+                for name, val in losses.items():
+                    if val.requires_grad:
+                        outputs[f"loss/{type}/{name}"] = val * self.loss_scale[type]
+                    else:
+                        outputs[f"stats/{type}/{name}"] = val
+            return outputs
         else:
             outputs = [{} for _ in range(batch_size)]
             for type, head in self.heads.items():

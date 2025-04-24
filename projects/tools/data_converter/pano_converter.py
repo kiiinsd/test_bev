@@ -13,8 +13,16 @@ def create_pano_infos(
     root_path, info_prefix, version='v1.0', max_sweeps=9
 ):
     pano = PanoSim(data_root=root_path, version=version)
-    train_scenes = set([])
-    val_scenes = set([s['token'] for s in pano.scene])
+    available_scenes = get_available_scenes(pano)
+    available_scene_names = [s['name'] for s in available_scenes]
+    train_scenes = ['scene-001', 'scene-002', 'scene-003', 'scene-004']
+    val_scenes = ['scene-005']
+    train_scenes = set(
+        [available_scenes[available_scene_names.index(s)]['token'] for s in train_scenes]
+    )
+    val_scenes = set(
+        [available_scenes[available_scene_names.index(s)]['token'] for s in val_scenes]
+    )
 
     tran_infos, val_infos = _fill_trainval_infos(pano, train_scenes, val_scenes)
     metadata = dict(version='lidar-test')
@@ -26,6 +34,46 @@ def create_pano_infos(
     data['infos'] = val_infos
     info_path = osp.join(root_path, '{}_infos_val.pkl'.format(info_prefix))
     mmcv.dump(data, info_path)
+
+def get_available_scenes(pano):
+    """Get available scenes from the input nuscenes class.
+
+    Given the raw data, get the information of available scenes for
+    further info generation.
+
+    Args:
+        nusc (class): Dataset class in the nuScenes dataset.
+
+    Returns:
+        available_scenes (list[dict]): List of basic information for the
+            available scenes.
+    """
+    available_scenes = []
+    print("total scene num: {}".format(len(pano.scene)))
+    for scene in pano.scene:
+        scene_token = scene["token"]
+        scene_rec = pano.get("scene", scene_token)
+        sample_rec = pano.get("sample", scene_rec["first_sample_token"])
+        sd_rec = pano.get("sample_data", sample_rec["data"]["LIDAR_TOP"])
+        has_more_frames = True
+        scene_not_exist = False
+        while has_more_frames:
+            lidar_path, boxes, _ = pano.get_sample_data(sd_rec["token"])
+            lidar_path = str(lidar_path)
+            if os.getcwd() in lidar_path:
+                # path from lyftdataset is absolute path
+                lidar_path = lidar_path.split(f"{os.getcwd()}/")[-1]
+                # relative path
+            if not mmcv.is_filepath(lidar_path):
+                scene_not_exist = True
+                break
+            else:
+                break
+        if scene_not_exist:
+            continue
+        available_scenes.append(scene)
+    print("exist scene num: {}".format(len(available_scenes)))
+    return available_scenes
 
 
 def _fill_trainval_infos(
@@ -109,14 +157,8 @@ def _fill_trainval_infos(
             velocity = np.array(
                 [anno['vel'] for anno in annotations]
             )
-            valid_flag = np.array(
-                [
-                    True
-                    # (anno["num_lidar_pts"] + anno["num_radar_pts"]) > 0
-                    for anno in annotations
-                ],
-                dtype=bool,
-            ).reshape(-1)
+            valid_flag = np.array([anno["num_lidar_pts"] > 0 for anno in annotations],
+                                  dtype=bool,).reshape(-1)
             # convert velo from global to lidar
             for i in range(len(boxes)):
                 velo = np.array([*velocity[i], 0.0])
@@ -136,7 +178,7 @@ def _fill_trainval_infos(
             info["gt_boxes"] = gt_boxes
             info["gt_names"] = names
             info["gt_velocity"] = velocity.reshape(-1, 2)
-            # info["num_lidar_pts"] = np.array([a["num_lidar_pts"] for a in annotations])
+            info["num_lidar_pts"] = np.array([a["num_lidar_pts"] for a in annotations])
             # info["num_radar_pts"] = np.array([a["num_radar_pts"] for a in annotations])
             info["valid_flag"] = valid_flag
 

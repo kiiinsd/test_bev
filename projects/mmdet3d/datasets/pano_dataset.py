@@ -9,6 +9,20 @@ from mmdet3d.core.bbox import LiDARInstance3DBoxes
 
 @DATASETS.register_module()
 class PanoDataset(Custom3DDataset):
+
+    CLASSES = (
+        "car",
+        "truck",
+        "trailer",
+        "bus",
+        # "construction_vehicle",
+        # "bicycle",
+        # "motorcycle",
+        # "pedestrian",
+        # "traffic_cone",
+        # "barrier",
+    )
+
     NameMapping = {
         'Car': 'car',
         'Truck': 'truck',
@@ -22,8 +36,8 @@ class PanoDataset(Custom3DDataset):
 
     def __init__(
         self, 
-        dataset_root, 
-        ann_file, 
+        ann_file,
+        dataset_root=None,
         pipeline=None, 
         object_classes=None, 
         map_classes=None,
@@ -33,7 +47,8 @@ class PanoDataset(Custom3DDataset):
         box_type_3d='LiDAR', 
         filter_empty_gt=True, 
         test_mode=False,
-        use_valid_flag=True,
+        eval_version="detection_cvpr_2019",
+        use_valid_flag=False,
         sequential=False,
         adj_frame_num=0,
     ):
