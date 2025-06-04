@@ -7,7 +7,8 @@ import numpy as np
 from pyquaternion import Quaternion
 
 from projects.mmdet3d.datasets import PanoDataset
-from projects.PanoSim import PanoSim
+from projects.panosim import PanoSim
+from projects.panosim.utils.splits import create_splits_scenes
 
 def create_pano_infos(
     root_path, info_prefix, version='v1.0', max_sweeps=9
@@ -15,8 +16,11 @@ def create_pano_infos(
     pano = PanoSim(data_root=root_path, version=version)
     available_scenes = get_available_scenes(pano)
     available_scene_names = [s['name'] for s in available_scenes]
-    train_scenes = ['scene-001', 'scene-002', 'scene-003', 'scene-004']
-    val_scenes = ['scene-005']
+    
+    split = create_splits_scenes()
+    train_scenes = split['train']
+    val_scenes = split['val']
+
     train_scenes = set(
         [available_scenes[available_scene_names.index(s)]['token'] for s in train_scenes]
     )
@@ -25,7 +29,7 @@ def create_pano_infos(
     )
 
     tran_infos, val_infos = _fill_trainval_infos(pano, train_scenes, val_scenes)
-    metadata = dict(version='lidar-test')
+    metadata = dict(version='v1.0')
     print('train_samples: {}, val_samples: {}'.format(len(tran_infos), len(val_infos)))
     
     data = dict(infos = tran_infos, metadata=metadata)
@@ -184,7 +188,7 @@ def _fill_trainval_infos(
 
         if sample["scene_token"] in train_scenes:
             train_info.append(info)
-        else:
+        if sample['scene_token'] in val_scenes:
             val_info.append(info)
     return train_info, val_info
 

@@ -82,7 +82,7 @@ def main() -> None:
         #         broadcast_buffers=False,
         #     )
         model = MMDataParallel(model, device_ids=[0])
-        # model.eval()
+        model.eval()
 
     for data in tqdm(dataflow):
         metas = data["metas"].data[0][0]

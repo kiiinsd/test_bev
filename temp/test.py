@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from pyquaternion import Quaternion
-from projects.PanoSim import PanoSim
+from projects.panosim import PanoSim
 
 pano = PanoSim(data_root='/home/kinsd/test_bev/data/panosim', version='v1.0')
 

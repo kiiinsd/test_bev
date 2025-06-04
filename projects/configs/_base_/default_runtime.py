@@ -1,4 +1,7 @@
-checkpoint_config = dict(interval=1)
+checkpoint_config = dict(
+    interval=1,
+    max_keep_ckpts = 10
+    )
 
 log_config = dict(
     interval=50,   # 多少批次 打印一次

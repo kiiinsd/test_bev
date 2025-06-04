@@ -10,15 +10,15 @@ custom_imports = dict(
 
 root_path = '/home/kinsd/test_bev/'
 pretrained_path = root_path + 'pretrained/'
-dataset_type = 'PanoDataset'
-dataset_root = root_path + 'data/panosim/'
+dataset_type = 'NuScenesDataset'
+dataset_root = root_path + 'data/nuscenes/'
 
 gt_paste_stop_epoch = -1
 reduce_beams = 32
 load_dim = 5
 use_dim = 5
 load_augmented = False
-max_epoch = 20
+max_epoch = 30
 sequential = False
 adj_frame_num = 0
 
@@ -203,7 +203,7 @@ model = dict(
             auxiliary = True,
             in_channels = 512,
             hidden_channel = 128,
-            num_classes = 10,
+            num_classes = 6,
             num_decoder_layers = 1,
             num_heads = 8,
             nms_kernel_size = 3,
@@ -510,7 +510,7 @@ data = dict(
         dataset = dict(
             type = dataset_type,
             dataset_root = dataset_root,
-            ann_file = dataset_root + "pano_infos_train.pkl",
+            ann_file = dataset_root + "nuscenes_infos_train.pkl",
             pipeline = train_pipeline,
             object_classes = object_classes,
             map_classes = map_classes,
@@ -525,7 +525,7 @@ data = dict(
     val = dict(
         type = dataset_type,
         dataset_root = dataset_root,
-        ann_file = dataset_root + "pano_infos_val.pkl",
+        ann_file = dataset_root + "nuscenes_infos_val.pkl",
         pipeline = test_pipeline,
         object_classes = object_classes,
         map_classes = map_classes,
@@ -538,7 +538,7 @@ data = dict(
     test = dict(
         type = dataset_type,
         dataset_root = dataset_root,
-        ann_file = dataset_root + "pano_infos_val.pkl",
+        ann_file = dataset_root + "nuscenes_infos_val.pkl",
         pipeline = test_pipeline,
         object_classes = object_classes,
         map_classes = map_classes,
@@ -562,7 +562,7 @@ evaluation = dict(
 
 optimizer = dict(
     type = "AdamW",
-    lr = 1.6e-4,
+    lr = 2.0e-4,
     weight_decay = 0.01,
 )
 
