@@ -137,70 +137,88 @@ class PanoDataset(Custom3DDataset):
         input_dict = dict()
         annos = self.get_anno_info(index)
         input_dict['ann_info'] = annos
-        info = self.data_infos[index]
-        data = dict(
-            token = info['token'],
-            sample_idx = info['token'],
-            lidar_path = info['lidar_path'],
-            timestamp = info['timestamp'],
-            sweeps = info['sweeps'],
-        )
 
-        ego2global = np.eye(4).astype(np.float32)
-        ego2global[:3, :3] = Quaternion(info['ego2global_rotation']).rotation_matrix
-        ego2global[:3, 3] = info['ego2global_translation']
-        data['ego2global'] = ego2global
+        frame_id_list = [index]
+        if self.sequential:
+            adj_id_list = list(range(1, self.adj_frame_num+1, 1))
+            for select_id in adj_id_list:
+                select_id = max(index - select_id, 0)
+                if not self.data_infos[select_id]["scene_token"] == \
+                    self.data_infos[index]["scene_token"]:
+                    frame_id_list.append(index)
+                else:
+                    frame_id_list.append(select_id)
 
-        lidar2ego = np.eye(4).astype(np.float32)
-        lidar2ego[:3, :3] = Quaternion(info['lidar2ego_rotation']).rotation_matrix
-        lidar2ego[:3, 3] = info['lidar2ego_translation']
-        data['lidar2ego'] = lidar2ego
+        data_info_list = []
+        for frame in frame_id_list:
+            info = self.data_infos[frame]
+            data = dict(
+                token = info['token'],
+                sample_idx = info['token'],
+                lidar_path = info['lidar_path'],
+                timestamp = info['timestamp'],
+                sweeps = info['sweeps'],
+            )
 
-        if self.modality['use_camera']:
-            data['image_paths'] = []
-            data['lidar2camera'] = []
-            data['lidar2image'] = []
-            data['camera2ego'] = []
-            data['camera_intrinsics'] = []
-            data['camera2lidar'] = []
+            ego2global = np.eye(4).astype(np.float32)
+            ego2global[:3, :3] = Quaternion(info['ego2global_rotation']).rotation_matrix
+            ego2global[:3, 3] = info['ego2global_translation']
+            data['ego2global'] = ego2global
 
-            for _, camera_info in info['cams'].items():
-                data['image_paths'].append(camera_info['data_path'])
+            lidar2ego = np.eye(4).astype(np.float32)
+            lidar2ego[:3, :3] = Quaternion(info['lidar2ego_rotation']).rotation_matrix
+            lidar2ego[:3, 3] = info['lidar2ego_translation']
+            data['lidar2ego'] = lidar2ego
 
-                # lidar to camera transform
-                lidar2camera_r = np.linalg.inv(camera_info['sensor2lidar_rotation'])
-                lidar2camera_t = (
-                    camera_info['sensor2lidar_translation'] @ lidar2camera_r.T
-                )
-                lidar2camera_rt = np.eye(4).astype(np.float32)
-                lidar2camera_rt[:3, :3] = lidar2camera_r.T
-                lidar2camera_rt[3, :3] = -lidar2camera_t
-                data['lidar2camera'].append(lidar2camera_rt.T)
+            if self.modality['use_camera']:
+                data['image_paths'] = []
+                data['lidar2camera'] = []
+                data['lidar2image'] = []
+                data['camera2ego'] = []
+                data['camera_intrinsics'] = []
+                data['camera2lidar'] = []
 
-                # camera intrinsics
-                camera_intrinsics = np.eye(4).astype(np.float32)
-                camera_intrinsics[:3, :3] = camera_info['camera_intrinsics']
-                data['camera_intrinsics'].append(camera_intrinsics)
+                for _, camera_info in info['cams'].items():
+                    data['image_paths'].append(camera_info['data_path'])
 
-                # lidar to image transform
-                lidar2image = camera_intrinsics @ lidar2camera_rt.T
-                data['lidar2image'].append(lidar2image)
+                    # lidar to camera transform
+                    lidar2camera_r = np.linalg.inv(camera_info['sensor2lidar_rotation'])
+                    lidar2camera_t = (
+                        camera_info['sensor2lidar_translation'] @ lidar2camera_r.T
+                    )
+                    lidar2camera_rt = np.eye(4).astype(np.float32)
+                    lidar2camera_rt[:3, :3] = lidar2camera_r.T
+                    lidar2camera_rt[3, :3] = -lidar2camera_t
+                    data['lidar2camera'].append(lidar2camera_rt.T)
 
-                # camera to ego transform
-                camera2ego = np.eye(4).astype(np.float32)
-                camera2ego[:3, :3] = Quaternion(
-                    camera_info['sensor2ego_rotation']
-                ).rotation_matrix
-                camera2ego[:3, 3] = camera_info['sensor2ego_translation']
-                data['camera2ego'].append(camera2ego)
+                    # camera intrinsics
+                    camera_intrinsics = np.eye(4).astype(np.float32)
+                    camera_intrinsics[:3, :3] = camera_info['camera_intrinsics']
+                    data['camera_intrinsics'].append(camera_intrinsics)
 
-                # camera to lidar transform
-                camera2lidar = np.eye(4).astype(np.float32)
-                camera2lidar[:3, :3] = camera_info['sensor2lidar_rotation']
-                camera2lidar[:3, 3] = camera_info['sensor2lidar_translation']
-                data['camera2lidar'].append(camera2lidar)
+                    # lidar to image transform
+                    lidar2image = camera_intrinsics @ lidar2camera_rt.T
+                    data['lidar2image'].append(lidar2image)
 
-        input_dict['curr'] = data
+                    # camera to ego transform
+                    camera2ego = np.eye(4).astype(np.float32)
+                    camera2ego[:3, :3] = Quaternion(
+                        camera_info['sensor2ego_rotation']
+                    ).rotation_matrix
+                    camera2ego[:3, 3] = camera_info['sensor2ego_translation']
+                    data['camera2ego'].append(camera2ego)
+
+                    # camera to lidar transform
+                    camera2lidar = np.eye(4).astype(np.float32)
+                    camera2lidar[:3, :3] = camera_info['sensor2lidar_rotation']
+                    camera2lidar[:3, 3] = camera_info['sensor2lidar_translation']
+                    data['camera2lidar'].append(camera2lidar)
+            
+            data_info_list.append(data)
+
+        input_dict['curr'] = data_info_list[0]
+        if self.sequential:
+            input_dict['adjacent'] = data_info_list[1:]
         return input_dict
 
     def get_anno_info(self, index):

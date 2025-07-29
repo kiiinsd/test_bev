@@ -21,7 +21,7 @@ class DetectionEvalPano:
                  config: DetectionConfig,
                  result_path: str,
                  eval_set: str,
-                 output_dir: str = None,
+                 output_dir: str = '',
                  verbose: bool = True):
         
         self.pano = pano

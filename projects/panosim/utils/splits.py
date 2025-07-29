@@ -14,10 +14,11 @@ train = \
      'scene-008', 'scene-009', 'scene-010', 'scene-011', 'scene-012', 'scene-013', 'scene-014',
      'scene-015', 'scene-016', 'scene-017', 'scene-018', 'scene-019', 'scene-020', 'scene-021', 
      'scene-022', 'scene-023', 'scene-024', 'scene-025', 'scene-026', 'scene-027', 'scene-028',
-     'scene-029', 'scene-030']
+     'scene-029', 'scene-030', 'scene-031', 'scene-032', 'scene-033', 'scene-034', 'scene-035',
+     'scene-036', 'scene-037', 'scene-038', 'scene-039',]
 
 val = \
-    ['scene-031', 'scene-032', 'scene-033', 'scene-034', 'scene-035']
+    ['scene-040', 'scene-041', 'scene-042', 'scene-043']
 
 def create_splits_scenes(verbose: bool = False) -> Dict[str, List[str]]:
     """

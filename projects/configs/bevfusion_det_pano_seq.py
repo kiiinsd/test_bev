@@ -19,8 +19,8 @@ load_dim = 5
 use_dim = 5
 load_augmented = False
 max_epoch = 20
-sequential = False
-adj_frame_num = 0
+sequential = True
+adj_frame_num = 1
 
 voxel_size = [0.075, 0.075, 0.2]
 point_cloud_range = [-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
@@ -73,7 +73,9 @@ input_modality = dict(
 )
 
 model = dict(
-    type = "BEVFusion",
+    type = "My_BEVFusion",
+    sequential = sequential,
+    adj_frame_num = adj_frame_num,
     encoders = dict(
         camera = dict(
             backbone = dict(
@@ -117,7 +119,7 @@ model = dict(
                 ),
             ),
             vtransform = dict(
-                type = 'DepthLSSTransform',
+                type = 'DepthLSSTransformSimple',
                 in_channels = 256,
                 out_channels = 80,
                 image_size = image_size,
@@ -504,7 +506,7 @@ test_pipeline = [
 
 data = dict(
     samples_per_gpu = 2,
-    workers_per_gpu = 1,
+    workers_per_gpu = 2,
     train = dict(
         type = "CBGSDataset",
         dataset = dict(
@@ -562,7 +564,7 @@ evaluation = dict(
 
 optimizer = dict(
     type = "AdamW",
-    lr = 2.0e-4,
+    lr = 1.6e-4,
     weight_decay = 0.01,
 )
 

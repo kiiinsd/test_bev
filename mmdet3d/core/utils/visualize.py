@@ -110,6 +110,51 @@ def visualize_camera(
     mmcv.imwrite(canvas, fpath)
 
 
+def visualize_lidar_overlap(
+    fpath: str,
+    lidar: Optional[np.ndarray] = None,
+    *,
+    bboxes: Optional[LiDARInstance3DBoxes] = None,
+    labels: Optional[np.ndarray] = None,
+    classes: Optional[List[str]] = None,
+    xlim: Tuple[float, float] = (-50, 50),
+    ylim: Tuple[float, float] = (-50, 50),
+    color: Optional[Tuple[int, int, int]] = None,
+    radius: float = 15,
+    thickness: float = 1,
+) -> None:
+    image = mmcv.imread(fpath)
+    canvas = image.copy()
+    canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
+    width, height, _ = canvas.shape
+
+    if bboxes is not None and len(bboxes) > 0:
+        coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
+        for index in range(coords.shape[0]):
+            name = classes[labels[index]]
+            coords[index, : , 0] = (coords[index, :, 0]+xlim[1]) / (xlim[1]-xlim[0]) * width
+            coords[index, : , 1] = (ylim[1]-coords[index, :, 1]) / (ylim[1]-ylim[0]) * height
+            for start, end in [
+                (0, 1),
+                (1, 2),
+                (2, 3),
+                (3, 4)
+            ]:
+                cv2.line(
+                    canvas,
+                    coords[index, start].numpy().astype(np.int),
+                    coords[index, end].numpy().astype(np.int),
+                    color or OBJECT_PALETTE[name],
+                    thickness,
+                    cv2.LINE_AA
+                )
+        canvas = canvas.astype(np.uint8)
+    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
+    mmcv.mkdir_or_exist(os.path.dirname(fpath))
+    mmcv.imwrite(canvas, fpath)
+
+
 def visualize_lidar(
     fpath: str,
     lidar: Optional[np.ndarray] = None,
@@ -121,7 +166,7 @@ def visualize_lidar(
     ylim: Tuple[float, float] = (-50, 50),
     color: Optional[Tuple[int, int, int]] = None,
     radius: float = 15,
-    thickness: float = 25,
+    thickness: float = 10,
 ) -> None:
     fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
 
@@ -160,7 +205,6 @@ def visualize_lidar(
         pad_inches=0,
     )
     plt.close()
-
 
 def visualize_map(
     fpath: str,

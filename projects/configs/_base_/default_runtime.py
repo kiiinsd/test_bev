@@ -1,6 +1,6 @@
 checkpoint_config = dict(
     interval=1,
-    max_keep_ckpts = 10
+    max_keep_ckpts = 2
     )
 
 log_config = dict(

@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from mmdet3d.core import LiDARInstance3DBoxes
 from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+from mmdet3d.core.utils.visualize import visualize_lidar_overlap
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
@@ -120,8 +121,7 @@ def main() -> None:
                 scores = scores[indices]
                 labels = labels[indices]
 
-            # bboxes[..., 2] -= bboxes[..., 5] / 2
-            bboxes[..., 2] = -1.55
+            bboxes[..., 2] -= bboxes[..., 5] / 2
             bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
         else:
             bboxes = None
@@ -138,7 +138,8 @@ def main() -> None:
 
         if "img" in data:
             for k, image_path in enumerate(metas["filename"]):
-                image = mmcv.imread(image_path)
+                # image = mmcv.imread(image_path)
+                image = mmcv.imread(os.path.join(args.out_dir, f"camera-{k}", f"{name}.png"))
                 visualize_camera(
                     os.path.join(args.out_dir, f"camera-{k}", f"{name}.png"),
                     image,
@@ -146,11 +147,12 @@ def main() -> None:
                     labels=labels,
                     transform=metas["lidar2image"][k],
                     classes=cfg.object_classes,
+                    color=(0,255,0)
                 )
 
         if "points" in data:
             lidar = data["points"].data[0][0].numpy()
-            visualize_lidar(
+            visualize_lidar_overlap(
                 os.path.join(args.out_dir, "lidar", f"{name}.png"),
                 lidar,
                 bboxes=bboxes,
@@ -158,6 +160,7 @@ def main() -> None:
                 xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
                 ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
                 classes=cfg.object_classes,
+                color=(0,255,0)
             )
 
         if masks is not None:
