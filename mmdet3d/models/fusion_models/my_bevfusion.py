@@ -34,6 +34,10 @@ class My_BEVFusion(BEVFusion):
         super().__init__(encoders, fuser, decoder, heads, **kwargs)
         self.num_frames = adj_frame_num + 1
         self.sequential = sequential
+        if self.sequential:
+            seq_fuser = fuser.copy()
+            seq_fuser['in_channels'] = [336 for _ in range(self.num_frames)]
+            self.seq_fuser = build_fuser(seq_fuser)
         self.grid = None
         self.xbound = encoders["camera"]["vtransform"]["xbound"]
         self.ybound = encoders["camera"]["vtransform"]["ybound"]
@@ -130,7 +134,8 @@ class My_BEVFusion(BEVFusion):
                 feature_list[frame] = self.align_feature(feature_list[frame],
                                                          [lidar2egos[0], lidar2egos[frame]],
                                                          [ego2globals[0], ego2globals[frame]])
-            x = self.fuser(feature_list)
+            x = self.seq_fuser(feature_list)
+            # x = torch.concat(feature_list, dim=1)
                     
         else:
             x = self.extract_bev_feature(
@@ -230,7 +235,10 @@ class My_BEVFusion(BEVFusion):
             features = features[::-1]
 
         if self.fuser is not None:
-            x = self.fuser(features)
+            if self.seq_fuser is not None:
+                x = torch.concat(features, dim=1)
+            else:
+                x = self.fuser(features)
         else:
             assert len(features) == 1, features
             x = features[0]

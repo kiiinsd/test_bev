@@ -362,8 +362,8 @@ train_pipeline = [
     ),
     dict(
         type = "ImageNormalize",
-        mean = [0.485, 0.456, 0.406],
-        std = [0.229, 0.224, 0.225],
+        mean = [0.3289, 0.3207, 0.3098],
+        std = [0.1627, 0.1589, 0.1724],
         sequential = sequential,
     ),
     dict(
@@ -469,8 +469,8 @@ test_pipeline = [
     ),
     dict(
         type = "ImageNormalize",
-        mean = [0.485, 0.456, 0.406],
-        std = [0.229, 0.224, 0.225],
+        mean = [0.3289, 0.3207, 0.3098],
+        std = [0.1627, 0.1589, 0.1724],
         sequential = sequential,
     ),
     dict(

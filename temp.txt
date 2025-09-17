@@ -75,3 +75,118 @@ array([[ 1.2600000e+03,  7.9950000e+02,  0.0000000e+00,  9.5940002e+02],
 1180.7511754315697,
 0.0
 ]
+
+***single***
+mAP: 0.6326                               
+mATE: 0.3857
+mASE: 0.3141
+mAOE: 0.5039
+mAVE: 1.0202
+mAAE: 0.4565
+NDS: 0.5503
+Eval time: 0.7s
+
+Per-class results:
+Object Class            AP      ATE     ASE     AOE     AVE     AAE   
+car                     0.835   0.297   0.144   0.138   1.638   0.550 
+truck                   0.000   1.000   1.000   1.000   1.000   1.000 
+bus                     0.697   0.332   0.179   0.262   1.178   0.117 
+trailer                 0.419   0.429   0.382   0.396   2.771   0.598 
+construction_vehicle    0.000   1.000   1.000   1.000   1.000   1.000 
+pedestrian              0.776   0.229   0.217   0.599   0.575   0.387 
+motorcycle              0.955   0.150   0.084   0.354   0.000   0.000 
+bicycle                 0.903   0.175   0.028   0.522   0.000   0.000 
+traffic_cone            0.796   0.119   0.048   nan     nan     nan   
+barrier                 0.945   0.126   0.059   0.263   nan     nan 
+
+***sequential*** ***convfuser***
+mAP: 0.6184                               
+mATE: 0.3836
+mASE: 0.3032
+mAOE: 0.4306
+mAVE: 0.8911
+mAAE: 0.4732
+NDS: 0.5610
+Eval time: 0.7s
+
+Per-class results:
+Object Class            AP      ATE     ASE     AOE     AVE     AAE   
+car                     0.840   0.296   0.140   0.104   1.363   0.551 
+truck                   0.000   1.000   1.000   1.000   1.000   1.000 
+bus                     0.717   0.273   0.135   0.110   0.950   0.246 
+trailer                 0.314   0.376   0.292   0.338   2.196   0.571 
+construction_vehicle    0.000   1.000   1.000   1.000   1.000   1.000 
+pedestrian              0.768   0.245   0.231   0.652   0.620   0.417 
+motorcycle              0.944   0.158   0.070   0.197   0.000   0.000 
+bicycle                 0.924   0.181   0.031   0.249   0.000   0.000 
+traffic_cone            0.763   0.154   0.073   nan     nan     nan   
+barrier                 0.913   0.153   0.060   0.226   nan     nan   
+
+***sequential*** ***confuser before align***
+mAP: 0.6052
+mATE: 0.3934
+mASE: 0.3068
+mAOE: 0.4395
+mAVE: 0.7826
+mAAE: 0.4369
+NDS: 0.5667
+Eval time: 0.7s
+
+Per-class results:
+Object Class            AP      ATE     ASE     AOE     AVE     AAE   
+car                     0.854   0.277   0.133   0.110   1.301   0.566 
+truck                   0.000   1.000   1.000   1.000   1.000   1.000 
+bus                     0.661   0.319   0.148   0.137   0.810   0.153 
+trailer                 0.229   0.447   0.329   0.119   1.584   0.467 
+construction_vehicle    0.000   1.000   1.000   1.000   1.000   1.000 
+pedestrian              0.752   0.247   0.225   0.758   0.566   0.309 
+motorcycle              0.958   0.152   0.087   0.324   0.000   0.000 
+bicycle                 0.898   0.195   0.025   0.305   0.000   0.000 
+traffic_cone            0.783   0.159   0.054   nan     nan     nan   
+barrier                 0.917   0.138   0.066   0.202   nan     nan  
+
+**sequential*** **no align***
+mAP: 0.5973
+mATE: 0.4021
+mASE: 0.3081
+mAOE: 0.4809
+mAVE: 0.7626
+mAAE: 0.4504
+NDS: 0.5582
+Eval time: 0.7s
+
+Per-class results:
+Object Class            AP      ATE     ASE     AOE     AVE     AAE   
+car                     0.835   0.296   0.140   0.138   1.281   0.559 
+truck                   0.000   1.000   1.000   1.000   1.000   1.000 
+bus                     0.726   0.238   0.175   0.146   0.748   0.076 
+trailer                 0.199   0.552   0.285   0.167   1.552   0.618 
+construction_vehicle    0.000   1.000   1.000   1.000   1.000   1.000 
+pedestrian              0.749   0.257   0.226   0.726   0.521   0.349 
+motorcycle              0.936   0.165   0.106   0.436   0.000   0.000 
+bicycle                 0.879   0.206   0.027   0.441   0.000   0.000 
+traffic_cone            0.756   0.151   0.065   nan     nan     nan   
+barrier                 0.893   0.157   0.058   0.274   nan     nan   
+
+***sequential*** ***confuser after align***
+mAP: 0.5925
+mATE: 0.4233
+mASE: 0.3083
+mAOE: 0.5049
+mAVE: 0.8587
+mAAE: 0.4820
+NDS: 0.5386
+Eval time: 0.8s
+
+Per-class results:
+Object Class            AP      ATE     ASE     AOE     AVE     AAE   
+car                     0.823   0.322   0.146   0.134   1.403   0.566 
+truck                   0.000   1.000   1.000   1.000   1.000   1.000 
+bus                     0.671   0.328   0.197   0.112   0.629   0.128 
+trailer                 0.249   0.573   0.268   0.308   2.272   0.781 
+construction_vehicle    0.000   1.000   1.000   1.000   1.000   1.000 
+pedestrian              0.732   0.253   0.227   0.812   0.564   0.381 
+motorcycle              0.933   0.186   0.091   0.475   0.000   0.000 
+bicycle                 0.874   0.210   0.033   0.418   0.000   0.000 
+traffic_cone            0.760   0.192   0.051   nan     nan     nan   
+barrier                 0.883   0.169   0.070   0.285   nan     nan   
