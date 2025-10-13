@@ -35,9 +35,11 @@ class My_BEVFusion(BEVFusion):
         self.num_frames = adj_frame_num + 1
         self.sequential = sequential
         if self.sequential:
-            seq_fuser = fuser.copy()
-            seq_fuser['in_channels'] = [336 for _ in range(self.num_frames)]
-            self.seq_fuser = build_fuser(seq_fuser)
+            # seq_fuser = fuser.copy()
+            # seq_fuser['in_channels'] = [336 for _ in range(self.num_frames)]
+            # self.seq_fuser = build_fuser(seq_fuser)
+            self.bev_backbone = build_backbone(encoders['bev_encoder_backbone'])
+            self.bev_neck = build_neck(encoders['bev_encoder_neck'])
         self.grid = None
         self.xbound = encoders["camera"]["vtransform"]["xbound"]
         self.ybound = encoders["camera"]["vtransform"]["ybound"]
@@ -134,7 +136,9 @@ class My_BEVFusion(BEVFusion):
                 feature_list[frame] = self.align_feature(feature_list[frame],
                                                          [lidar2egos[0], lidar2egos[frame]],
                                                          [ego2globals[0], ego2globals[frame]])
-            x = self.seq_fuser(feature_list)
+            bev_feat = torch.cat(feature_list, dim=1)
+            x = self.bev_backbone(bev_feat)
+            x = self.bev_neck(x)
             # x = torch.concat(feature_list, dim=1)
                     
         else:
@@ -235,9 +239,9 @@ class My_BEVFusion(BEVFusion):
             features = features[::-1]
 
         if self.fuser is not None:
-            if self.seq_fuser is not None:
-                x = torch.concat(features, dim=1)
-            else:
+            # if self.seq_fuser is not None:
+            #     x = torch.concat(features, dim=1)
+            # else:
                 x = self.fuser(features)
         else:
             assert len(features) == 1, features
@@ -334,20 +338,6 @@ class My_BEVFusion(BEVFusion):
         ]
         extra = [torch.split(t, 1, dim=1) for t in extra]
         extra = [[p.squeeze(1) for p in t] for t in extra]
-        # lidar2image = torch.split(lidar2image, 1, dim=1)
-        # lidar2image_list = [t.squeeze(1) for t in lidar2image]
-
-        # lidar2ego = torch.split(lidar2ego, 1, dim=1)
-        # lidar2ego_list = [t.squeeze(1) for t in lidar2ego]
-
-        # camera_intrinsics = torch.split(camera_intrinsics, 1, dim=1)
-        # camera_intrinsics_list = [t.squeeze(1) for t in camera_intrinsics]
-
-        # camera2lidar = torch.split(camera2lidar, 1, dim=1)
-        # camera2lidar_list = [t.squeeze(1) for t in camera2lidar]
-
-        # ego2global = torch.split(ego2global, 1, dim=1)
-        # ego2global_list = [t.squeeze(1) for t in ego2global]
         
         lidar2images, lidar2egos, camera_intrinsics, camera2lidars, ego2globals = extra
 

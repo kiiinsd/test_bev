@@ -163,6 +163,15 @@ model = dict(
                 block_type = "basicblock",
             ),
         ),
+        bev_encoder_backbone = dict(
+        type = 'CustomResNet',
+        numC_input = 256 * (adj_frame_num + 1),
+        num_channels = [256 * 2, 256 * 4, 256 * 8],
+        ),
+        bev_encoder_neck=dict(
+        type = 'FPN_LSS',
+        in_channels = 256 * 8 + 256 * 2,
+        out_channels = 256),
     ),
     decoder = dict(
         backbone = dict(
@@ -294,6 +303,7 @@ model = dict(
         in_channels = [80, 256],
         out_channels = 256
     ),
+    
 )
 train_pipeline = [
     dict(
