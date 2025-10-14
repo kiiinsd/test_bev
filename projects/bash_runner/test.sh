@@ -1,6 +1,6 @@
 TEST_PY='projects/tools/test.py'
 CONFIG_FILE='projects/configs/bevfusion_det_pano_seq_con.py'
-PTH='runs/2025-08-03_09-58-04/latest.pth'
+PTH='runs/2025-10-13_14-39-59/latest.pth'
 EVAL='object'
 
 python ${TEST_PY} ${CONFIG_FILE} ${PTH} --eval ${EVAL}

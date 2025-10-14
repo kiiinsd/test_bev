@@ -245,7 +245,7 @@ class TransFusionHead(nn.Module):
         )
         local_max[:, :, padding:(-padding), padding:(-padding)] = local_max_inner
         ## for Pedestrian & Traffic_cone in nuScenes
-        if self.test_cfg["dataset"] == "nuScenes":
+        if self.test_cfg["dataset"] == "nuScenes" or self.test_cfg["dataset"] == "PanoSim":
             local_max[
                 :,
                 8,
