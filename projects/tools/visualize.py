@@ -146,6 +146,7 @@ def main() -> None:
                     labels=labels,
                     transform=metas["lidar2image"][k],
                     classes=cfg.object_classes,
+                    thickness=8
                 )
 
         if "points" in data:
@@ -158,6 +159,7 @@ def main() -> None:
                 xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
                 ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
                 classes=cfg.object_classes,
+                thickness=15
             )
 
         if masks is not None:

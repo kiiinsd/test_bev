@@ -198,7 +198,7 @@ def visualize_lidar(
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     fig.savefig(
         fpath,
-        dpi=10,
+        dpi=20,
         facecolor="black",
         format="png",
         bbox_inches="tight",

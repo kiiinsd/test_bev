@@ -20,9 +20,9 @@ use_dim = 5
 load_augmented = False
 max_epoch = 20
 sequential = True
-extra_encoder = False
-align_features = False
 adj_frame_num = 1
+extra_encoder = False
+align_features = True
 
 voxel_size = [0.075, 0.075, 0.2]
 point_cloud_range = [-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
@@ -77,9 +77,9 @@ input_modality = dict(
 model = dict(
     type = "My_BEVFusion",
     sequential = sequential,
+    adj_frame_num = adj_frame_num,
     extra_encoder = extra_encoder,
     align_features = align_features,
-    adj_frame_num = adj_frame_num,
     encoders = dict(
         camera = dict(
             backbone = dict(
@@ -167,6 +167,15 @@ model = dict(
                 block_type = "basicblock",
             ),
         ),
+        bev_encoder_backbone = dict(
+        type = 'CustomResNet',
+        numC_input = 256 * (adj_frame_num + 1),
+        num_channels = [256 * 2, 256 * 4, 256 * 8],
+        ),
+        bev_encoder_neck=dict(
+        type = 'FPN_LSS',
+        in_channels = 256 * 8 + 256 * 2,
+        out_channels = 256),
     ),
     decoder = dict(
         backbone = dict(
@@ -298,6 +307,7 @@ model = dict(
         in_channels = [80, 256],
         out_channels = 256
     ),
+    
 )
 train_pipeline = [
     dict(

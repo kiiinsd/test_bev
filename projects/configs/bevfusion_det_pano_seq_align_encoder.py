@@ -21,6 +21,8 @@ load_augmented = False
 max_epoch = 20
 sequential = True
 adj_frame_num = 1
+extra_encoder = True
+align_features = True
 
 voxel_size = [0.075, 0.075, 0.2]
 point_cloud_range = [-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
@@ -76,6 +78,8 @@ model = dict(
     type = "My_BEVFusion",
     sequential = sequential,
     adj_frame_num = adj_frame_num,
+    extra_encoder = extra_encoder,
+    align_features = align_features,
     encoders = dict(
         camera = dict(
             backbone = dict(

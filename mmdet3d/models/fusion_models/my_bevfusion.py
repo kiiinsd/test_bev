@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 import torch
+import cv2
 from mmcv.runner import auto_fp16, force_fp32
 from torch import nn
 from torch._tensor import Tensor
@@ -28,18 +29,33 @@ class My_BEVFusion(BEVFusion):
             decoder: Dict[str, Any], 
             heads: Dict[str, Any],
             sequential,
+            extra_encoder,
+            align_features,
             adj_frame_num, 
             **kwargs
         ) -> None:
         super().__init__(encoders, fuser, decoder, heads, **kwargs)
         self.num_frames = adj_frame_num + 1
         self.sequential = sequential
+        self.extra_encoder = extra_encoder
+        self.align_features = align_features
         if self.sequential:
+            if self.extra_encoder:
             # seq_fuser = fuser.copy()
             # seq_fuser['in_channels'] = [336 for _ in range(self.num_frames)]
             # self.seq_fuser = build_fuser(seq_fuser)
-            self.bev_backbone = build_backbone(encoders['bev_encoder_backbone'])
-            self.bev_neck = build_neck(encoders['bev_encoder_neck'])
+                self.bev_backbone = build_backbone(encoders['bev_encoder_backbone'])
+                self.bev_neck = build_neck(encoders['bev_encoder_neck'])
+            else:
+                seq_decoder = decoder.copy()
+                seq_decoder['backbone']['in_channels'] = self.num_frames * 256
+                self.decoder = nn.ModuleDict(
+                    {
+                        'backbone':build_backbone(seq_decoder['backbone']),
+                        'neck':build_neck(seq_decoder['neck'])
+                    }
+                )
+
         self.grid = None
         self.xbound = encoders["camera"]["vtransform"]["xbound"]
         self.ybound = encoders["camera"]["vtransform"]["ybound"]
@@ -132,14 +148,34 @@ class My_BEVFusion(BEVFusion):
                                 **kwargs
                             )
                 feature_list.append(feature)
-            for frame in range(1, self.num_frames):
-                feature_list[frame] = self.align_feature(feature_list[frame],
-                                                         [lidar2egos[0], lidar2egos[frame]],
-                                                         [ego2globals[0], ego2globals[frame]])
+            if self.align_features:
+                curr_feature = torch.sum(feature_list[0].squeeze(0), dim=0).cpu().detach().numpy()
+                adj_feature = torch.sum(feature_list[1].squeeze(0), dim=0).cpu().detach().numpy()
+                for frame in range(1, self.num_frames):
+                    feature_list[frame] = self.align_feature(
+                        feature_list[frame], 
+                        [lidar2egos[0], lidar2egos[frame]],
+                        [ego2globals[0], ego2globals[frame]]
+                    )
+                adj_feature_align = torch.sum(feature_list[1].squeeze(0), dim=0).cpu().detach().numpy()
+                con_before_align = cv2.applyColorMap(cv2.normalize(curr_feature+adj_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                con_after_align = cv2.applyColorMap(cv2.normalize(curr_feature+adj_feature_align, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                curr_feature = cv2.applyColorMap(cv2.normalize(curr_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                adj_feature = cv2.applyColorMap(cv2.normalize(adj_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                adj_feature_align = cv2.applyColorMap(cv2.normalize(adj_feature_align, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                row1 = cv2.hconcat([curr_feature, adj_feature, con_before_align])
+                row2 = cv2.hconcat([curr_feature, adj_feature_align, con_after_align])
+                full = cv2.vconcat([row1, row2])
+                cv2.imshow('feature_map', full)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
             bev_feat = torch.cat(feature_list, dim=1)
-            x = self.bev_backbone(bev_feat)
-            x = self.bev_neck(x)
-            # x = torch.concat(feature_list, dim=1)
+            if self.extra_encoder:
+                x = self.bev_backbone(bev_feat)
+                x = self.bev_neck(x)
+            else:
+                x = bev_feat
                     
         else:
             x = self.extract_bev_feature(
@@ -274,6 +310,10 @@ class My_BEVFusion(BEVFusion):
 
         curr_l2e, adj_l2e = lidar2egos
         curr_e2g, adj_e2g = ego2globals
+        # curr_e2g_r = curr_e2g[:, :3, :3]
+        # adj_e2g_r = adj_e2g[:, :3, :3]
+        # curr_e2g[:, :3, :3] = curr_e2g_r.transpose(1, 2)
+        # adj_e2g[:, :3, :3] = adj_e2g_r.transpose(1, 2)
  
         feat2bev = torch.zeros((3, 3), dtype=grid.dtype).to(grid)
         feat2bev[0, 0] = self.xbound[2] * self.downsample
@@ -286,13 +326,17 @@ class My_BEVFusion(BEVFusion):
         normalize_factor = torch.tensor([w - 1.0, h - 1.0],
                                         dtype=feature.dtype,
                                         device=feature.device)
+        
+        adj_l2curr_e = torch.inverse(curr_e2g) @ adj_e2g @ adj_l2e
 
-        curr2adj = torch.inverse(adj_l2e).matmul(torch.inverse(adj_e2g))\
-            .matmul(curr_e2g).matmul(curr_l2e).view(n, 1, 1, 4, 4)
+        # curr2adj = torch.inverse(adj_l2e).matmul(torch.inverse(adj_e2g))\
+        #     .matmul(curr_e2g).matmul(curr_l2e).view(n, 1, 1, 4, 4)
+        curr2adj = curr_l2e.matmul(torch.inverse(adj_l2curr_e)).view(n, 1, 1, 4, 4)
+        # curr2adj = curr_l2e.matmul(torch.inverse(adj_l2curr_e)).view(n, 1, 1, 4, 4)
         curr2adj = curr2adj[:, :, :,
                     [True, True, False, True], :][:, :, :, :,
                                                 [True, True, False, True]]
-        tf = torch.linalg.inv(feat2bev).matmul(curr2adj).matmul(feat2bev)
+        tf = torch.inverse(feat2bev).matmul(curr2adj).matmul(feat2bev)
         adj_grid = tf.matmul(grid)
         adj_grid = adj_grid[:, :, :, :2, 0] / normalize_factor.view(1, 1, 1, 
                                                         2) * 2.0 - 1.0
