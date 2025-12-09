@@ -445,7 +445,7 @@ test_pipeline = [
     ),
     dict(
         type = "LoadPointsFromMultiSweeps",
-        sweeps_num = 5,
+        sweeps_num = 0,
         load_dim = load_dim,
         use_dim = use_dim,
         reduce_beams = reduce_beams,
