@@ -158,6 +158,7 @@ class PanoDataset(Custom3DDataset):
                 lidar_path = info['lidar_path'],
                 timestamp = info['timestamp'],
                 sweeps = info['sweeps'],
+                ego_vel = info['ego_vel'],
             )
 
             ego2global = np.eye(4).astype(np.float32)

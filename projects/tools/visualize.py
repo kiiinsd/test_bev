@@ -1,5 +1,6 @@
 import argparse
 import copy
+from curses import meta
 import os
 
 import mmcv
@@ -14,7 +15,7 @@ from torchpack.utils.config import configs
 from tqdm import tqdm
 
 from mmdet3d.core import LiDARInstance3DBoxes
-from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+from projects.mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
@@ -87,6 +88,7 @@ def main() -> None:
     for data in tqdm(dataflow):
         metas = data["metas"].data[0][0]
         name = "{}".format(metas["timestamp"])
+        ego_vel = metas["ego_vel"]
 
         if args.mode == "pred":
             with torch.inference_mode():
@@ -144,9 +146,10 @@ def main() -> None:
                     image,
                     bboxes=bboxes,
                     labels=labels,
+                    ego_vel=ego_vel,
                     transform=metas["lidar2image"][k],
                     classes=cfg.object_classes,
-                    thickness=8
+                    thickness=2
                 )
 
         if "points" in data:

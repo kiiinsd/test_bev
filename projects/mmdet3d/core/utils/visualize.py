@@ -1,5 +1,6 @@
 import copy
 import os
+from tkinter import RIDGE
 from typing import List, Optional, Tuple
 
 import cv2
@@ -7,7 +8,9 @@ import mmcv
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ..bbox import LiDARInstance3DBoxes
+from mmdet3d.core import bbox
+from mmdet3d.core.bbox import LiDARInstance3DBoxes
+from .warning import Risk, warning
 
 __all__ = ["visualize_camera", "visualize_lidar", "visualize_map"]
 
@@ -39,6 +42,28 @@ MAP_PALETTE = {
     "divider": (106, 61, 154),
 }
 
+WARNING_PALETTE = {
+    Risk.NO_RISK: (0, 255, 0),
+    Risk.LOW_RISK: (255, 255, 0),
+    Risk.HIGH_RISK: (255, 0, 0)
+}
+
+def draw_text(img, text,
+          font=cv2.FONT_HERSHEY_PLAIN,
+          pos=(0, 0),
+          font_scale=3.0,
+          font_thickness=2,
+          text_color=(0, 255, 0),
+          text_color_bg=(0, 0, 0)
+          ):
+
+    x, y = pos
+    text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
+    text_w, text_h = text_size
+    cv2.rectangle(img, pos, (x + text_w, y + text_h), text_color_bg, -1)
+    cv2.putText(img, text, (x, y + text_h), font, font_scale, text_color, font_thickness, cv2.LINE_AA)
+
+    return text_size
 
 def visualize_camera(
     fpath: str,
@@ -46,6 +71,7 @@ def visualize_camera(
     *,
     bboxes: Optional[LiDARInstance3DBoxes] = None,
     labels: Optional[np.ndarray] = None,
+    ego_vel: float = 0.0,
     transform: Optional[np.ndarray] = None,
     classes: Optional[List[str]] = None,
     color: Optional[Tuple[int, int, int]] = None,
@@ -56,33 +82,62 @@ def visualize_camera(
 
     if bboxes is not None and len(bboxes) > 0:
         corners = bboxes.corners
+        centers = bboxes.gravity_center
+        bottom_centers = bboxes.bottom_center
+        bottom_dims = bboxes.dims[:, :2]
+        velocitys = bboxes.tensor[:, 7:9]
         num_bboxes = corners.shape[0]
 
         coords = np.concatenate(
             [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
         )
         centers = np.concatenate(
-            [centers.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
+            [centers, np.ones((num_bboxes, 1))], axis=-1
         )
         transform = copy.deepcopy(transform).reshape(4, 4)
         coords = coords @ transform.T
+        coords = coords.reshape(-1, 8, 4)
+        centers = centers @ transform.T
+        centers = centers.reshape(-1, 1, 4)
 
         indices = np.all(coords[..., 2] > 0, axis=1)
         coords = coords[indices]
+        centers = centers[indices]
+        bottom_centers = bottom_centers[indices]
+        bottom_dims = bottom_dims[indices]
+        velocitys = velocitys[indices]
         labels = labels[indices]
 
         indices = np.argsort(-np.min(coords[..., 2], axis=1))
         coords = coords[indices]
+        centers = centers[indices]
+        velocitys = velocitys[indices]
+        bottom_centers = bottom_centers[indices]
+        bottom_dims = bottom_dims[indices]
         labels = labels[indices]
 
         coords = coords.reshape(-1, 4)
         coords[:, 2] = np.clip(coords[:, 2], a_min=1e-5, a_max=1e5)
         coords[:, 0] /= coords[:, 2]
         coords[:, 1] /= coords[:, 2]
+        centers = centers.reshape(-1, 4)
+        centers[:, 2] = np.clip(centers[:, 2], a_min=1e-5, a_max=1e5)
+        centers[:, 0] /= centers[:, 2]
+        centers[:, 1] /= centers[:, 2]
 
         coords = coords[..., :2].reshape(-1, 8, 2)
+        centers = centers[..., :2]
         for index in range(coords.shape[0]):
-            name = classes[labels[index]]
+            warning_level = warning(
+                bottom_centers[index][0],
+                bottom_centers[index][1],
+                velocitys[index][0],
+                velocitys[index][1]-ego_vel,
+                0 if velocitys[index][1] >= 0 else 1,
+                2.0,
+                1.25 + bottom_dims[index][0],
+                2.2 + bottom_dims[index][1]
+            )
             for start, end in [
                 (0, 1),
                 (0, 3),
@@ -101,10 +156,33 @@ def visualize_camera(
                     canvas,
                     coords[index, start].astype(np.int),
                     coords[index, end].astype(np.int),
-                    color or OBJECT_PALETTE[name],
+                    WARNING_PALETTE[warning_level],
                     thickness,
                     cv2.LINE_AA,
                 )
+            
+            dist = np.linalg.norm(bottom_centers[index])
+            _, text_h = draw_text(
+                canvas,
+                '{:.2f}, warning:{}'.format(dist, warning_level),
+                cv2.FONT_HERSHEY_PLAIN,
+                (int(centers[index][0]), int(centers[index][1])),
+                1,
+                1,
+                (0,0,0),
+                WARNING_PALETTE[warning_level]
+            )
+            draw_text(
+                canvas,
+                'vx:{:.2f} vy:{:.2f}'.format(velocitys[index][0], velocitys[index][1] - ego_vel),
+                cv2.FONT_HERSHEY_PLAIN,
+                (int(centers[index][0]), int(centers[index][1])+text_h+1),
+                1,
+                1,
+                (0,0,0),
+                WARNING_PALETTE[warning_level]
+            )
+
         canvas = canvas.astype(np.uint8)
     canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
 

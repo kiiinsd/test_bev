@@ -104,6 +104,7 @@ def _fill_trainval_infos(
             'lidar2ego_rotation': cs_record['rotation'],
             'ego2global_translation': pose_record['translation'],
             'ego2global_rotation': pose_record['rotation'],
+            'ego_vel': pose_record['vel'],
             'timestamp': sample['timestamp'],
             # 'location': location,
             'scene_token': sample['scene_token'],

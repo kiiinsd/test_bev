@@ -748,7 +748,7 @@ class TransFusionHead(nn.Module):
                 filter=True,
             )
 
-            if self.test_cfg["dataset"] == "nuScenes":
+            if self.test_cfg["dataset"] == "nuScenes" or self.test_cfg["dataset"] == "PanoSim":
                 self.tasks = [
                     dict(
                         num_class=8,
