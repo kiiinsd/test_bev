@@ -8,6 +8,7 @@ import queue
 import threading
 import argparse
 import copy
+import math
 import numpy as np
 
 from typing import Dict, Any, Optional, List, Tuple
@@ -23,7 +24,7 @@ from mmcv import Config
 from mmcv.runner import load_checkpoint
 from mmcv.parallel import MMDataParallel, collate
 from mmcv.parallel import DataContainer as DC
-from data.panosim.anno_adjust import boxes
+# from data.panosim.anno_adjust import boxes
 from mmdet3d.models import build_model
 from mmdet3d.core import LiDARInstance3DBoxes
 from mmdet.datasets.builder import build_dataloader
@@ -34,44 +35,73 @@ class MultiSensorStreamDataset(IterableDataset):
     data_root = 'data/panosim/'
     cam_name = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_LEFT", "CAM_BACK_RIGHT", "CAM_BACK"]
     UbuntuIp = '127.0.0.1'
-    TcpPort = [14321+i for i in range(7)]
+    Start_TcpPort = 14321
     LidarBeams = 32
     LidarMeasurements = 1080
     MonoHeight = 900
     MonoWidth = 1600
     BufferSizeMono = 4 + 4 + MonoWidth * MonoHeight * 3
     
-    def __init__(self, sensor_id, img_aug_cfg,  cam_transform=None, buffer_size=30):
+    def __init__(
+            self, 
+            camera_id=[0, 1, 2], 
+            img_aug_cfg=None, 
+            cam_transform=None, 
+            buffer_size=30, 
+            use_lidar=True,
+            use_lane=True,
+        ):
         """
         Args:
-            camera_sources: 传感器列表[0, 1, 2]
-            transform: 数据预处理
+            sensor_id: 摄像头编号[0, 1, 2, ...]
+            img_aug_cfg: 图像增强参数
+            cam_transform: 图像归一化器
             buffer_size: 每个传感器的缓冲大小
-            max_frames_per_sensor: 每个传感器最大帧数
-            fps: 目标帧率
+            use_lidar: lidar使能
         """
-        self.sensor_id = sensor_id
+        self.camera_id = camera_id
+        sensor_id = copy.deepcopy(camera_id)
         self.transform = cam_transform
         self.buffer_size = buffer_size
-        self.receive_barrier = threading.Barrier(7)
-        self.img_aug = ImageAug3D(**img_aug_cfg)
+
+        self.use_lidar = use_lidar
+        self.use_lane = use_lane
+        if use_lidar and use_lane:
+            self.lidar_id = camera_id[-1]+1
+            self.lane_id = camera_id[-1]+2
+            sensor_id.extend([self.lidar_id, self.lane_id])
+        elif use_lane:
+            self.lane_id = camera_id[-1]+1
+            sensor_id.extend([self.lane_id])
+        elif use_lidar:
+            self.lidar_id=camera_id[-1]+1
+            sensor_id.extend([self.lidar_id])
         
-        # 为每个摄像头创建队列
+        self.sensor_id = sensor_id
+
+        self.receive_barrier = threading.Barrier(len(sensor_id))
+        if img_aug_cfg:
+            self.img_aug = ImageAug3D(**img_aug_cfg)
+
+        self.TcpPort = [self.Start_TcpPort + i for i in sensor_id]
+        
+        # 为每个传感器创建队列
         self.queues = [deque(maxlen=buffer_size) for _ in sensor_id]
         self.locks = [threading.Lock() for _ in sensor_id]
         self.frame_counts = [0 for _ in sensor_id]
         self.running = False
         self.threads = []
+        self.lanes = {}
         self.trans = self._load_transforms()
         
     def _camera_worker(self, camera_idx):
-        print('PanoSimRos2Bridge--mono.{}--listen({}:{})'.format(camera_idx, self.UbuntuIp, self.TcpPort[camera_idx]))
+        print('PanoSim--mono.{}--listen({}:{})'.format(camera_idx, self.UbuntuIp, self.TcpPort[camera_idx]))
         sock = socket.socket()
         sock.bind((self.UbuntuIp, self.TcpPort[camera_idx]))
         sock.listen(5)
 
         client_sock, client_info = sock.accept()
-        print('PanoSimRos2Bridge--mono.{}--connected:{}'.format(camera_idx, client_info))
+        print('PanoSim--mono.{}--connected:{}'.format(camera_idx, client_info))
 
         try:
             while self.running:
@@ -81,7 +111,7 @@ class MultiSensorStreamDataset(IterableDataset):
                     #print('recv mono.{} timestamp:{}'.format(camera_idx, timestamp))
                     data_width = int.from_bytes(recv_data[4:8], byteorder="little")
                     mono_data = recv_data[8:(data_width * 3 + 8)]
-                    img = Image.frombuffer('RGB', (1600,900), mono_data, 'raw', 'RGB', 0, 1)
+                    img = Image.frombuffer('RGB', (self.MonoWidth,self.MonoHeight), mono_data, 'raw', 'RGB', 0, 1)
                     #img = np.frombuffer(mono_data, dtype=np.uint8).reshape((self.MonoHeight, self.MonoWidth, 3))
                     # 添加到队列
                     with self.locks[camera_idx]:
@@ -89,7 +119,7 @@ class MultiSensorStreamDataset(IterableDataset):
                             self.queues[camera_idx].append({
                                 'frame': img,
                                 'timestamp': timestamp,
-                                'camera_id': camera_idx,
+                                'sensor_id': camera_idx,
                                 'frame_id': self.frame_counts[camera_idx]
                             })
                             self.frame_counts[camera_idx] += 1
@@ -98,19 +128,19 @@ class MultiSensorStreamDataset(IterableDataset):
                     break
         finally:
             client_sock.close()
-            print('PanoSimRos2Bridge--mono.{}--disconnect:{}'.format(camera_idx, client_info))
+            print('PanoSim--mono.{}--disconnect:{}'.format(camera_idx, client_info))
         
 
-        print('PanoSimRos2Bridge--thread_recv_mono_data quit')
+        print('PanoSim--thread_recv_mono_data quit')
 
     def _lidar_worker(self):
-        print('PanoSimRos2Bridge--lidar--listen({}:{})'.format(self.UbuntuIp, self.TcpPort[-1]))
+        print('PanoSim--lidar--listen({}:{})'.format(self.UbuntuIp, self.TcpPort[self.lidar_id]))
         sock = socket.socket()
         sock.bind((self.UbuntuIp, self.TcpPort[-1]))
         sock.listen(5)
 
         client_sock, client_info = sock.accept()
-        print('PanoSimRos2Bridge--lidar--connected:{}'.format(client_info))
+        print('PanoSim--lidar--connected:{}'.format(client_info))
 
         try:
             while self.running:
@@ -125,15 +155,15 @@ class MultiSensorStreamDataset(IterableDataset):
                         points_ = points.copy()
                         points_[:,:2] = points[:,:2] * (-1)
                         # 添加到队列
-                        with self.locks[-1]:
-                            if len(self.queues[-1]) < self.buffer_size:
-                                self.queues[-1].append({
+                        with self.locks[self.lidar_id]:
+                            if len(self.queues[self.lidar_id]) < self.buffer_size:
+                                self.queues[self.lidar_id].append({
                                     'frame': points_,
                                     'timestamp': timestamp,
-                                    'camera_id': self.sensor_id[-1],
-                                    'frame_id': self.frame_counts[-1]
+                                    'sensor_id': self.lidar_id,
+                                    'frame_id': self.frame_counts[self.lidar_id]
                                 })
-                                self.frame_counts[-1] += 1
+                                self.frame_counts[self.lidar_id] += 1
                         
                         self.receive_barrier.wait()
                     else:
@@ -142,10 +172,46 @@ class MultiSensorStreamDataset(IterableDataset):
                     break
         finally:
             client_sock.close()
-            print('PanoSimRos2Bridge-lidar--disconnect:{}'.format(client_info))
+            print('PanoSim-lidar--disconnect:{}'.format(client_info))
         
 
-        print('PanoSimRos2Bridge--thread_recv_lidar_data quit')
+        print('PanoSim--thread_recv_lidar_data quit')
+    
+    def _lane_worker(self):
+        print('PanoSim--lane--listen({}:{})'.format(self.UbuntuIp, self.TcpPort[self.lane_id]))
+        sock = socket.socket()
+        sock.bind((self.UbuntuIp, self.TcpPort[self.lane_id]))
+        sock.listen(5)
+
+        client_sock, client_info = sock.accept()
+        print('PanoSim--lane--connected:{}'.format(client_info))
+
+        try:
+            while self.running:
+                recv_data = client_sock.recv(4, socket.MSG_WAITALL)
+                data_width = int.from_bytes(recv_data, byteorder='little')
+                if recv_data:
+                    lane_data = client_sock.recv(data_width, socket.MSG_WAITALL)
+                    if lane_data:
+                        lanes = json.loads(lane_data)
+                        with self.locks[self.lane_id]:
+                            if len(self.queues[self.lane_id]) < self.buffer_size:
+                                self.queues[self.lane_id].append({
+                                    'frame': lanes,
+                                    'timestamp': '',
+                                    'sensor_id': self.lane_id,
+                                    'frame_id': self.frame_counts[self.lane_id]
+                                })
+                                self.frame_counts[self.lane_id] += 1
+                        self.receive_barrier.wait()
+                    else:
+                        break
+                else:
+                    break
+        finally:
+            client_sock.close()
+            print('PanoSim-lane--disconnect:{}'.format(client_info))
+
 
     def _load_transforms(self):
         trans = dict(
@@ -198,9 +264,9 @@ class MultiSensorStreamDataset(IterableDataset):
         return trans
 
     def start(self):
-        """启动所有摄像头线程"""
         self.running = True
-        for i in self.sensor_id[:-1]:
+        """启动所有摄像头线程"""
+        for i in self.camera_id:
             thread = threading.Thread(
                 target=self._camera_worker, 
                 args=(i,),
@@ -208,8 +274,17 @@ class MultiSensorStreamDataset(IterableDataset):
             )
             thread.start()
             self.threads.append(thread)
+        """启动激光雷达线程"""
+        if self.use_lidar:
+            thread = threading.Thread(
+                target=self._lidar_worker,
+                daemon=True
+            )
+            thread.start()
+            self.threads.append(thread)
+        """启动车道线接收线程"""
         thread = threading.Thread(
-            target=self._lidar_worker,
+            target=self._lane_worker,
             daemon=True
         )
         thread.start()
@@ -232,48 +307,64 @@ class MultiSensorStreamDataset(IterableDataset):
             ]
             return self._generate_frames(cameras_for_worker)
     
-    def _generate_frames(self, camera_indices=None):
+    def _generate_frames(self, sensor_indices=None):
         """生成帧数据"""
-        if camera_indices is None:
-            camera_indices = range(len(self.sensor_id))
+        if sensor_indices is None:
+            sensor_indices = [i for i in range(len(self.sensor_id))]
+            if self.use_lidar and self.use_lane:
+                camera_indices = sensor_indices[:-2]
+            elif self.use_lane or self.use_lidar:
+                camera_indices = sensor_indices[:-1]
+            else:
+                camera_indices = sensor_indices
         
         while self.running:
             valid = True
-            for cam_idx in camera_indices:
-                with self.locks[cam_idx]:
-                    if len(self.queues[cam_idx]) == 0:
+            for sensor_idx in sensor_indices:
+                with self.locks[sensor_idx]:
+                    if len(self.queues[sensor_idx]) == 0:
                         valid = False
                         break
-            
             if valid:
                 ori_imgs = []
                 imgs = []
                 for cam_idx in camera_indices:
                     with self.locks[cam_idx]:
                         frame_data = self.queues[cam_idx].popleft()
-                    
                     frame = frame_data['frame']
-                    if cam_idx != self.sensor_id[-1]:
-                        ori_imgs.append(frame)
-                        imgs.append(frame)
-                    else:
-                        points = frame
-                        c0 = np.zeros((points.shape[0], 1), dtype=np.float32)
-                        points = np.column_stack((points, c0))
-                
-                img_aug_matrix, imgs = self.img_aug(imgs)
-                for cam_idx in range(6):
+                    ori_imgs.append(frame)
+                    imgs.append(frame)
+
+                if self.use_lane:
+                    with self.locks[self.lane_id]:
+                        frame_data = self.queues[self.lane_id].popleft()
+                        lanes = frame_data['frame']
+                        
+                if self.use_lidar:
+                    with self.locks[self.lidar_id]:
+                        frame_data = self.queues[self.lidar_id].popleft()
+                    frame = frame_data['frame']
+                    points = frame
+                    c0 = np.zeros((points.shape[0], 1), dtype=np.float32)
+                    points = np.column_stack((points, c0))
+                if hasattr(self, 'img_aug'):
+                    img_aug_matrix, imgs = self.img_aug(imgs)
+                else:
+                    img_aug_matrix = np.eye(4)
+                for cam_idx in camera_indices:
                     imgs[cam_idx] = self.transform(imgs[cam_idx])
-                self.trans['img_aud_matrix'] = img_aug_matrix
+                self.trans['img_aug_matrix'] = img_aug_matrix
                 data = dict(
                     img = DC(torch.stack(imgs), stack=True),
-                    points = DC(to_tensor(points)),
                     metas = DC(dict(
                                 box_type_3d=LiDARInstance3DBoxes,
-                                lidar2image=self.trans['lidar2image']
+                                lidar2image=self.trans['lidar2image'],
+                                lanes = lanes
                                 ), 
                                 cpu_only=True)
                 )
+                if self.use_lidar:
+                    data['points'] = DC(to_tensor(points)),
                 for key in self.trans.keys():
                     val = np.array(self.trans[key], dtype=np.float32)
                     if isinstance(self.trans[key], list):
@@ -495,10 +586,148 @@ def visualize_lidar(
     plt.close()
     return image
 
+# def cubic_fit(points):
+#     """
+#     用三次多项式拟合点集，输出多项式系数
+    
+#     参数:
+#     points (list of tuples): 点列表，每个点为 (x, y) 元组，x 坐标单调递增
+    
+#     返回:
+#     tuple: (a, b, c, d) 三次多项式系数，其中 y = a*x^3 + b*x^2 + c*x + d
+#     """
+#     # 提取x和y坐标
+#     x = np.array([p[0] for p in points])
+#     y = np.array([p[1] for p in points])
+
+#     if len(points) == 2:
+#         X = np.column_stack([x, np.ones(len(x))])
+#         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
+#         a = 0
+#         b = 0
+#         c, d = coeffs
+#     elif len(points) == 3:
+#         X = np.column_stack([x**2, x, np.ones(len(x))])
+#         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
+#         a = 0
+#         b, c, d = coeffs
+#     else:
+#         X = np.column_stack([x**3, x**2, x, np.ones(len(x))])
+#         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
+#         a, b, c, d = coeffs
+    
+#     return (a, b, c, d)
+
+def get_evenly_spaced_points(x1, y1, x2, y2, d):
+    """
+    在两点确定的线段上以间距d均匀取点（包括起点，不包括终点，最后一段不足d不取）
+    
+    参数:
+    x1, y1: 第一个点的坐标
+    x2, y2: 第二个点的坐标
+    d: 取点间距
+    
+    返回:
+    list: 包含取点坐标的列表，每个点为元组(x, y)
+    """
+    # 计算两点间欧氏距离
+    dx = x2 - x1
+    dy = y2 - y1
+    dist = math.sqrt(dx*dx + dy*dy)
+    
+    # 如果两点间距小于d，返回空列表
+    if dist < d:
+        return []
+    
+    # 计算单位向量
+    u_x = dx / dist
+    u_y = dy / dist
+    
+    points = []
+    # 从起点开始，以d为步长取点，直到不超过终点
+    k = 0
+    while k * d < dist:
+        x = x1 + k * d * u_x
+        y = y1 + k * d * u_y
+        points.append([x, y])
+        k += 1
+    
+    return points
+
+def draw_lanes(
+    img: np.ndarray,
+    lanes: np.ndarray,
+    transform: np.ndarray,
+    color: Tuple = (255, 0, 0),
+    thickness: float = 4,
+):
+    canvas = img.copy()
+    transform = copy.deepcopy(transform).reshape(4, 4)
+    for ori_lane in lanes:
+        lane = copy.deepcopy(ori_lane)
+        lane = lane @ transform.T
+        idx = lane[:, 2] > 0
+        # lane[:, 2] = np.clip(lane[:, 2], a_min=1e-5, a_max=1e5)
+        lane = lane[idx, :]
+        ori_lane = ori_lane[idx, :]
+        lane[:, 0] /= lane[:, 2]
+        lane[:, 1] /= lane[:, 2]
+        lane = lane[:, :2]
+        last_point = lane[0]
+        for i, point in enumerate(lane[1:]):
+            cv2.line(
+                    canvas,
+                    last_point.astype(int),
+                    point.astype(int),
+                    color,
+                    thickness,
+                    cv2.LINE_AA,
+                )
+            if abs(ori_lane[i+1][0]) > 70 or abs(ori_lane[i+1][1]) > 70:
+                break
+            
+            last_point = point
+        
+    canvas = canvas.astype(np.uint8)
+    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
+    return canvas
+
+def draw_lane_lidar(
+    lanes: np.ndarray,
+    xlim: Tuple[float, float] = (-100, 100),
+    ylim: Tuple[float, float] = (-100, 100),
+    color: Tuple = (255, 0, 0),
+    thickness: float = 10,
+) -> None:
+    fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
+
+    ax = plt.gca()
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.set_aspect(1)
+    ax.set_axis_off()
+
+    for lane in lanes:
+        for i in range(len(lane)-1):
+            plt.plot(
+                lane[i][:2],
+                lane[i+1][:2],
+                linewidth=thickness,
+                color=np.array(color)/255,
+            )
+    fig.canvas.draw()
+    buf = fig.canvas.tostring_rgb()
+    ncols, nrows = fig.canvas.get_width_height()
+    image = np.frombuffer(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
+    plt.close()
+    return image
+
 # 使用示例
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', metavar='FILE')
+    parser.add_argument("--mode", type=str, default="gt", choices=["gt", "pred"])
     parser.add_argument('--checkpoint', type=str, default=None)
     parser.add_argument('--bbox-score', type=float, default=None)
     parser.add_argument("--bbox-classes", nargs="+", type=int, default=None)
@@ -524,10 +753,12 @@ def main():
     
     # 创建数据集（使用2个摄像头）
     dataset = MultiSensorStreamDataset(
-        sensor_id=[i for i in range(7)],  # 摄像头0和1
+        camera_id=[0],
         img_aug_cfg=img_aug_cfg,
         cam_transform=transform,
-        buffer_size=20
+        buffer_size=20,
+        use_lidar=False,
+        use_lane=True
     )
     
     # 启动数据流
@@ -550,15 +781,41 @@ def main():
     )
 
     cfg = Config.fromfile(args.config)
-    model = build_model(cfg.model)
-    load_checkpoint(model, args.checkpoint, map_location='cpu')
-    model = MMDataParallel(model, device_ids=[0])
-    model.eval()
+
+    if args.mode == 'pred':
+        model = build_model(cfg.model)
+        load_checkpoint(model, args.checkpoint, map_location='cpu')
+        model = MMDataParallel(model, device_ids=[0])
+        model.eval()
     
     try:
         for batch_idx, batch_data in enumerate(dataloader):
             imgs, data = batch_data
             metas = data["metas"].data[0][0]
+            lanes = np.array(metas['lanes'][:-1])
+            homo_lanes = []
+            e2g = np.array(metas['lanes'][-1])
+            l2e = data['lidar2ego'].data[0][0].cpu().detach().numpy()
+            for lane in lanes:
+                # new_lane = []
+                # for i in range(len(lane)-1):
+                #     point_list = get_evenly_spaced_points(lane[i][0], lane[i][1], lane[i+1][0], lane[i+1][1], 1)
+                #     new_lane.extend(point_list)
+                lane = np.column_stack([lane, np.zeros(len(lane)), np.ones(len(lane))])
+                lane = lane @ (np.linalg.inv(e2g)).T @ (np.linalg.inv(l2e)).T
+                homo_lanes.append(lane)
+            
+            # img = draw_lanes(
+            #     img = np.array(imgs.data[0][0][0]),
+            #     lanes = homo_lanes,
+            #     transform = metas['lidar2image'][0],
+            # )
+            img = draw_lane_lidar(
+                lanes
+            )
+            cv2.imshow('', img)
+            cv2.waitKey(100)
+
             #print(f"批次 {batch_idx}: {imgs[0].shape} {data['points'].shape}")
             #print(imgs[0].shape)
             # row1 = np.concatenate([imgs[1], imgs[0], imgs[2]], axis=2)
@@ -574,14 +831,15 @@ def main():
 
                 
             
-            # 模型推理等操作
-            # predictions = model(frames)
-            with torch.inference_mode():
-                outputs = model(**data)
+            if args.mode == 'pred':
+                with torch.inference_mode():
+                    outputs = model(**data)
             
-            # print(outputs)
+            if args.mode =='gt':
+                bboxes = None
+                labels = None
             
-            if 'boxes_3d' in outputs[0]:
+            elif 'boxes_3d' in outputs[0] and args.mode == 'pred':
                 bboxes = outputs[0]["boxes_3d"].tensor.numpy()
                 scores = outputs[0]["scores_3d"].numpy()
                 labels = outputs[0]["labels_3d"].numpy()
@@ -606,32 +864,32 @@ def main():
                 bboxes = None
                 labels = None
 
-            display = []
-            for i in range(6):
-                new_img = visualize_camera(
-                    image=np.array(imgs.data[0][0][i]),
-                    bboxes=bboxes,
-                    labels=labels,
-                    transform=metas["lidar2image"][i],
-                    classes=cfg.object_classes
-                )
-                display.append(new_img)
-            row1 = cv2.hconcat([display[1], display[0], display[2]])
-            row2 = cv2.hconcat([display[4], display[5], display[3]])
-            full = cv2.vconcat([row1, row2])
-            full = cv2.resize(full, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
+            # display = []
+            # for i in range(dataset.camera_id):
+            #     new_img = visualize_camera(
+            #         image=np.array(imgs.data[0][0][i]),
+            #         bboxes=bboxes,
+            #         labels=labels,
+            #         transform=metas["lidar2image"][i],
+            #         classes=cfg.object_classes
+            #     )
+            #     display.append(new_img)
+            # row1 = cv2.hconcat([display[1], display[0], display[2]])
+            # row2 = cv2.hconcat([display[4], display[5], display[3]])
+            # full = cv2.vconcat([row1, row2])
+            # full = cv2.resize(full, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
 
-            lidar = visualize_lidar(
-                lidar=data['points'].data[0][0].numpy(),
-                bboxes=bboxes,
-                labels=labels,
-                xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
-                ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
-                classes=cfg.object_classes
-            )
-            cv2.imshow('camera', full)
-            cv2.imshow('lidar', lidar)
-            cv2.waitKey(100)
+            # lidar = visualize_lidar(
+            #     lidar=data['points'].data[0][0].numpy(),
+            #     bboxes=bboxes,
+            #     labels=labels,
+            #     xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
+            #     ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
+            #     classes=cfg.object_classes
+            # )
+            # cv2.imshow('camera', full)
+            # cv2.imshow('lidar', lidar)
+            # cv2.waitKey(100)
             # if batch_idx >= 50:  # 演示限制
             #     break
                 
