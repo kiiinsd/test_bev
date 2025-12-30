@@ -17,6 +17,8 @@ from pyquaternion import Quaternion
 from torch.utils.data import IterableDataset, get_worker_info, DataLoader
 from collections import deque
 from hashlib import md5
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 
 
@@ -283,12 +285,13 @@ class MultiSensorStreamDataset(IterableDataset):
             thread.start()
             self.threads.append(thread)
         """启动车道线接收线程"""
-        thread = threading.Thread(
-            target=self._lane_worker,
-            daemon=True
-        )
-        thread.start()
-        self.threads.append(thread)
+        if self.use_lane:
+            thread = threading.Thread(
+                target=self._lane_worker,
+                daemon=True
+            )
+            thread.start()
+            self.threads.append(thread)
     
     def __iter__(self):
         """迭代器实现"""
@@ -586,38 +589,6 @@ def visualize_lidar(
     plt.close()
     return image
 
-# def cubic_fit(points):
-#     """
-#     用三次多项式拟合点集，输出多项式系数
-    
-#     参数:
-#     points (list of tuples): 点列表，每个点为 (x, y) 元组，x 坐标单调递增
-    
-#     返回:
-#     tuple: (a, b, c, d) 三次多项式系数，其中 y = a*x^3 + b*x^2 + c*x + d
-#     """
-#     # 提取x和y坐标
-#     x = np.array([p[0] for p in points])
-#     y = np.array([p[1] for p in points])
-
-#     if len(points) == 2:
-#         X = np.column_stack([x, np.ones(len(x))])
-#         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
-#         a = 0
-#         b = 0
-#         c, d = coeffs
-#     elif len(points) == 3:
-#         X = np.column_stack([x**2, x, np.ones(len(x))])
-#         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
-#         a = 0
-#         b, c, d = coeffs
-#     else:
-#         X = np.column_stack([x**3, x**2, x, np.ones(len(x))])
-#         coeffs = np.linalg.lstsq(X, y, rcond=None)[0]
-#         a, b, c, d = coeffs
-    
-#     return (a, b, c, d)
-
 def get_evenly_spaced_points(x1, y1, x2, y2, d):
     """
     在两点确定的线段上以间距d均匀取点（包括起点，不包括终点，最后一段不足d不取）
@@ -695,31 +666,30 @@ def draw_lanes(
 
 def draw_lane_lidar(
     lanes: np.ndarray,
-    xlim: Tuple[float, float] = (-100, 100),
-    ylim: Tuple[float, float] = (-100, 100),
-    color: Tuple = (255, 0, 0),
+    xlim: Tuple[float, float] = (-50, 50),
+    ylim: Tuple[float, float] = (-50, 50),
+    color: Tuple = (0, 0, 255),
     thickness: float = 10,
 ) -> None:
-    fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
+    fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]), dpi=10)
 
     ax = plt.gca()
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
     ax.set_aspect(1)
-    ax.set_axis_off()
+    # ax.set_axis_off()
 
     for lane in lanes:
-        for i in range(len(lane)-1):
-            plt.plot(
-                lane[i][:2],
-                lane[i+1][:2],
-                linewidth=thickness,
-                color=np.array(color)/255,
-            )
+        plt.plot(
+            lane[:,0],
+            lane[:,1],
+            linewidth=thickness,
+            color=np.array(color)/255,
+        )
     fig.canvas.draw()
     buf = fig.canvas.tostring_rgb()
     ncols, nrows = fig.canvas.get_width_height()
-    image = np.frombuffer(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
+    image = np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
     plt.close()
     return image
 
@@ -797,22 +767,23 @@ def main():
             e2g = np.array(metas['lanes'][-1])
             l2e = data['lidar2ego'].data[0][0].cpu().detach().numpy()
             for lane in lanes:
-                # new_lane = []
-                # for i in range(len(lane)-1):
-                #     point_list = get_evenly_spaced_points(lane[i][0], lane[i][1], lane[i+1][0], lane[i+1][1], 1)
-                #     new_lane.extend(point_list)
+                new_lane = []
+                for i in range(len(lane)-1):
+                    point_list = get_evenly_spaced_points(lane[i][0], lane[i][1], lane[i+1][0], lane[i+1][1], 1)
+                    new_lane.extend(point_list)
+                lane = new_lane
                 lane = np.column_stack([lane, np.zeros(len(lane)), np.ones(len(lane))])
                 lane = lane @ (np.linalg.inv(e2g)).T @ (np.linalg.inv(l2e)).T
                 homo_lanes.append(lane)
             
-            # img = draw_lanes(
-            #     img = np.array(imgs.data[0][0][0]),
-            #     lanes = homo_lanes,
-            #     transform = metas['lidar2image'][0],
-            # )
-            img = draw_lane_lidar(
-                lanes
+            img = draw_lanes(
+                img = np.array(imgs.data[0][0][0]),
+                lanes = homo_lanes,
+                transform = metas['lidar2image'][0],
             )
+            # img = draw_lane_lidar(
+            #     homo_lanes
+            # )
             cv2.imshow('', img)
             cv2.waitKey(100)
 
