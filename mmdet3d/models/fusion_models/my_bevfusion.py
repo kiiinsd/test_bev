@@ -149,26 +149,26 @@ class My_BEVFusion(BEVFusion):
                             )
                 feature_list.append(feature)
             if self.align_features:
-                # curr_feature = torch.sum(feature_list[0].squeeze(0), dim=0).cpu().detach().numpy()
-                # adj_feature = torch.sum(feature_list[1].squeeze(0), dim=0).cpu().detach().numpy()
+                curr_feature = torch.sum(feature_list[0].squeeze(0), dim=0).cpu().detach().numpy()
+                adj_feature = torch.sum(feature_list[1].squeeze(0), dim=0).cpu().detach().numpy()
                 for frame in range(1, self.num_frames):
                     feature_list[frame] = self.align_feature(
                         feature_list[frame], 
                         [lidar2egos[0], lidar2egos[frame]],
                         [ego2globals[0], ego2globals[frame]]
                     )
-                # adj_feature_align = torch.sum(feature_list[1].squeeze(0), dim=0).cpu().detach().numpy()
-                # con_before_align = cv2.applyColorMap(cv2.normalize(curr_feature+adj_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
-                # con_after_align = cv2.applyColorMap(cv2.normalize(curr_feature+adj_feature_align, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
-                # curr_feature = cv2.applyColorMap(cv2.normalize(curr_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
-                # adj_feature = cv2.applyColorMap(cv2.normalize(adj_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
-                # adj_feature_align = cv2.applyColorMap(cv2.normalize(adj_feature_align, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
-                # row1 = cv2.hconcat([curr_feature, adj_feature, con_before_align])
-                # row2 = cv2.hconcat([curr_feature, adj_feature_align, con_after_align])
-                # full = cv2.vconcat([row1, row2])
-                # cv2.imshow('feature_map', full)
-                # cv2.waitKey(0)
-                # cv2.destroyAllWindows()
+                adj_feature_align = torch.sum(feature_list[1].squeeze(0), dim=0).cpu().detach().numpy()
+                con_before_align = cv2.applyColorMap(cv2.normalize(curr_feature+adj_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                con_after_align = cv2.applyColorMap(cv2.normalize(curr_feature+adj_feature_align, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                curr_feature = cv2.applyColorMap(cv2.normalize(curr_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                adj_feature = cv2.applyColorMap(cv2.normalize(adj_feature, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                adj_feature_align = cv2.applyColorMap(cv2.normalize(adj_feature_align, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8UC1), cv2.COLORMAP_JET)
+                row1 = cv2.hconcat([curr_feature, adj_feature, con_before_align])
+                row2 = cv2.hconcat([curr_feature, adj_feature_align, con_after_align])
+                full = cv2.vconcat([row1, row2])
+                cv2.imshow('feature_map', full)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
 
             bev_feat = torch.cat(feature_list, dim=1)
             if self.extra_encoder:
