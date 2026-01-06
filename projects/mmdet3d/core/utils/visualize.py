@@ -1,12 +1,11 @@
 import copy
 import os
-from tkinter import RIDGE
 from typing import List, Optional, Tuple
 
 import cv2
 import mmcv
 import numpy as np
-from matplotlib import pyplot as plt
+from matplotlib import axis, pyplot as plt
 
 from mmdet3d.core import bbox
 from mmdet3d.core.bbox import LiDARInstance3DBoxes
@@ -44,8 +43,8 @@ MAP_PALETTE = {
 
 WARNING_PALETTE = {
     Risk.NO_RISK: (0, 255, 0),
-    Risk.LOW_RISK: (255, 255, 0),
-    Risk.HIGH_RISK: (255, 0, 0)
+    Risk.LOW_RISK: (0, 255, 255),
+    Risk.HIGH_RISK: (0, 0, 255)
 }
 
 def draw_text(img, text,
@@ -66,17 +65,18 @@ def draw_text(img, text,
     return text_size
 
 def visualize_camera(
-    fpath: str,
-    image: np.ndarray,
+    fpath: Optional[str] = None,
+    image: Optional[np.ndarray] = None,
     *,
     bboxes: Optional[LiDARInstance3DBoxes] = None,
     labels: Optional[np.ndarray] = None,
     ego_vel: float = 0.0,
+    lines: np.ndarray,
     transform: Optional[np.ndarray] = None,
     classes: Optional[List[str]] = None,
     color: Optional[Tuple[int, int, int]] = None,
     thickness: float = 4,
-) -> None:
+) -> np.ndarray:
     canvas = image.copy()
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
 
@@ -127,16 +127,20 @@ def visualize_camera(
 
         coords = coords[..., :2].reshape(-1, 8, 2)
         centers = centers[..., :2]
+
+        line = lines[0][:,:2]
+        dist = np.sqrt(np.sum((line-np.array([0,0]))**2, axis=1))
+        ego_idx = np.argmin(dist)
         for index in range(coords.shape[0]):
             warning_level = warning(
-                bottom_centers[index][0],
-                bottom_centers[index][1],
-                velocitys[index][0],
-                velocitys[index][1]-ego_vel,
-                0 if velocitys[index][1] >= 0 else 1,
+                bottom_centers[index][:2],
+                velocitys[index][:2],
+                ego_vel,
+                ego_idx,
+                lines,
                 2.0,
-                1.25 + bottom_dims[index][0],
-                2.2 + bottom_dims[index][1]
+                3.0,
+                [5.0, 3.0]
             )
             for start, end in [
                 (0, 1),
@@ -184,10 +188,12 @@ def visualize_camera(
             )
 
         canvas = canvas.astype(np.uint8)
-    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
-
-    mmcv.mkdir_or_exist(os.path.dirname(fpath))
-    mmcv.imwrite(canvas, fpath)
+    
+    if fpath:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        mmcv.mkdir_or_exist(os.path.dirname(fpath))
+        mmcv.imwrite(canvas, fpath)
+    return canvas
 
 
 def visualize_lidar_overlap(

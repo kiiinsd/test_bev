@@ -4,9 +4,11 @@ import torch
 import cv2
 from mmcv.runner import auto_fp16, force_fp32
 from torch.nn import functional as F
+from torch import nn
 
 from mmdet3d.models import FUSIONMODELS
 from mmdet3d.models.fusion_models.bevfusion import BEVFusion
+from mmdet3d.models.builder import build_backbone, build_neck
 
 __all__ = ["My_BEVFusion"]
 

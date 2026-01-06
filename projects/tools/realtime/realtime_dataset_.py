@@ -31,6 +31,7 @@ from mmdet3d.models import build_model
 from mmdet3d.core import LiDARInstance3DBoxes
 from mmdet.datasets.builder import build_dataloader
 from mmdet.datasets.pipelines import to_tensor
+from projects.mmdet3d.core.utils.visualize import *
 
 class MultiSensorStreamDataset(IterableDataset):
     """支持多摄像头的流式数据集"""
@@ -138,7 +139,7 @@ class MultiSensorStreamDataset(IterableDataset):
     def _lidar_worker(self):
         print('PanoSim--lidar--listen({}:{})'.format(self.UbuntuIp, self.TcpPort[self.lidar_id]))
         sock = socket.socket()
-        sock.bind((self.UbuntuIp, self.TcpPort[-1]))
+        sock.bind((self.UbuntuIp, self.TcpPort[self.lidar_id]))
         sock.listen(5)
 
         client_sock, client_info = sock.accept()
@@ -341,7 +342,9 @@ class MultiSensorStreamDataset(IterableDataset):
                 if self.use_lane:
                     with self.locks[self.lane_id]:
                         frame_data = self.queues[self.lane_id].popleft()
-                        lanes = frame_data['frame']
+                        lanes = frame_data['frame']['centerlines']
+                        e2g = frame_data['frame']['e2g']
+                        ego_vel = frame_data['frame']['ego_vel']
                         
                 if self.use_lidar:
                     with self.locks[self.lidar_id]:
@@ -362,7 +365,9 @@ class MultiSensorStreamDataset(IterableDataset):
                     metas = DC(dict(
                                 box_type_3d=LiDARInstance3DBoxes,
                                 lidar2image=self.trans['lidar2image'],
-                                lanes = lanes
+                                lanes = lanes,
+                                ego2global = e2g,
+                                ego_vel = ego_vel,
                                 ), 
                                 cpu_only=True)
                 )
@@ -479,115 +484,115 @@ OBJECT_PALETTE = {
     "pedestrian": (0, 0, 230),
     "traffic_cone": (47, 79, 79),
 }
-def visualize_camera(
-    image: np.ndarray,
-    *,
-    bboxes: Optional[LiDARInstance3DBoxes] = None,
-    labels: Optional[np.ndarray] = None,
-    transform: Optional[np.ndarray] = None,
-    classes: Optional[List[str]] = None,
-    color: Optional[Tuple[int, int, int]] = None,
-    thickness: float = 10,
-):
-    canvas = image.copy()
-    if bboxes is not None and len(bboxes) > 0:
-        corners = bboxes.corners
-        num_bboxes = corners.shape[0]
+# def visualize_camera(
+#     image: np.ndarray,
+#     *,
+#     bboxes: Optional[LiDARInstance3DBoxes] = None,
+#     labels: Optional[np.ndarray] = None,
+#     transform: Optional[np.ndarray] = None,
+#     classes: Optional[List[str]] = None,
+#     color: Optional[Tuple[int, int, int]] = None,
+#     thickness: float = 10,
+# ):
+#     canvas = image.copy()
+#     if bboxes is not None and len(bboxes) > 0:
+#         corners = bboxes.corners
+#         num_bboxes = corners.shape[0]
 
-        coords = np.concatenate(
-            [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
-        )
-        transform = copy.deepcopy(transform).reshape(4, 4)
-        coords = coords @ transform.T
-        coords = coords.reshape(-1, 8, 4)
+#         coords = np.concatenate(
+#             [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
+#         )
+#         transform = copy.deepcopy(transform).reshape(4, 4)
+#         coords = coords @ transform.T
+#         coords = coords.reshape(-1, 8, 4)
 
-        indices = np.all(coords[..., 2] > 0, axis=1)
-        coords = coords[indices]
-        labels = labels[indices]
+#         indices = np.all(coords[..., 2] > 0, axis=1)
+#         coords = coords[indices]
+#         labels = labels[indices]
 
-        indices = np.argsort(-np.min(coords[..., 2], axis=1))
-        coords = coords[indices]
-        labels = labels[indices]
+#         indices = np.argsort(-np.min(coords[..., 2], axis=1))
+#         coords = coords[indices]
+#         labels = labels[indices]
 
-        coords = coords.reshape(-1, 4)
-        coords[:, 2] = np.clip(coords[:, 2], a_min=1e-5, a_max=1e5)
-        coords[:, 0] /= coords[:, 2]
-        coords[:, 1] /= coords[:, 2]
+#         coords = coords.reshape(-1, 4)
+#         coords[:, 2] = np.clip(coords[:, 2], a_min=1e-5, a_max=1e5)
+#         coords[:, 0] /= coords[:, 2]
+#         coords[:, 1] /= coords[:, 2]
 
-        coords = coords[..., :2].reshape(-1, 8, 2)
-        for index in range(coords.shape[0]):
-            name = classes[labels[index]]
-            for start, end in [
-                (0, 1),
-                (0, 3),
-                (0, 4),
-                (1, 2),
-                (1, 5),
-                (3, 2),
-                (3, 7),
-                (4, 5),
-                (4, 7),
-                (2, 6),
-                (5, 6),
-                (6, 7),
-            ]:
-                cv2.line(
-                    canvas,
-                    coords[index, start].astype(int),
-                    coords[index, end].astype(int),
-                    color or OBJECT_PALETTE[name],
-                    thickness,
-                    cv2.LINE_AA,
-                )
-        canvas = canvas.astype(np.uint8)
-    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+#         coords = coords[..., :2].reshape(-1, 8, 2)
+#         for index in range(coords.shape[0]):
+#             name = classes[labels[index]]
+#             for start, end in [
+#                 (0, 1),
+#                 (0, 3),
+#                 (0, 4),
+#                 (1, 2),
+#                 (1, 5),
+#                 (3, 2),
+#                 (3, 7),
+#                 (4, 5),
+#                 (4, 7),
+#                 (2, 6),
+#                 (5, 6),
+#                 (6, 7),
+#             ]:
+#                 cv2.line(
+#                     canvas,
+#                     coords[index, start].astype(int),
+#                     coords[index, end].astype(int),
+#                     color or OBJECT_PALETTE[name],
+#                     thickness,
+#                     cv2.LINE_AA,
+#                 )
+#         canvas = canvas.astype(np.uint8)
+#     canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
 
-    return canvas
+#     return canvas
 
-def visualize_lidar(
-    lidar: Optional[np.ndarray] = None,
-    *,
-    bboxes: Optional[LiDARInstance3DBoxes] = None,
-    labels: Optional[np.ndarray] = None,
-    classes: Optional[List[str]] = None,
-    xlim: Tuple[float, float] = (-50, 50),
-    ylim: Tuple[float, float] = (-50, 50),
-    color: Optional[Tuple[int, int, int]] = None,
-    radius: float = 15,
-    thickness: float = 10,
-) -> None:
-    fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
+# def visualize_lidar(
+#     lidar: Optional[np.ndarray] = None,
+#     *,
+#     bboxes: Optional[LiDARInstance3DBoxes] = None,
+#     labels: Optional[np.ndarray] = None,
+#     classes: Optional[List[str]] = None,
+#     xlim: Tuple[float, float] = (-50, 50),
+#     ylim: Tuple[float, float] = (-50, 50),
+#     color: Optional[Tuple[int, int, int]] = None,
+#     radius: float = 15,
+#     thickness: float = 10,
+# ) -> None:
+#     fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
 
-    ax = plt.gca()
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
-    ax.set_aspect(1)
-    ax.set_axis_off()
+#     ax = plt.gca()
+#     ax.set_xlim(*xlim)
+#     ax.set_ylim(*ylim)
+#     ax.set_aspect(1)
+#     ax.set_axis_off()
 
-    if lidar is not None:
-        plt.scatter(
-            lidar[:, 0],
-            lidar[:, 1],
-            s=radius,
-            c="white",
-        )
+#     if lidar is not None:
+#         plt.scatter(
+#             lidar[:, 0],
+#             lidar[:, 1],
+#             s=radius,
+#             c="white",
+#         )
 
-    if bboxes is not None and len(bboxes) > 0:
-        coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
-        for index in range(coords.shape[0]):
-            name = classes[labels[index]]
-            plt.plot(
-                coords[index, :, 0],
-                coords[index, :, 1],
-                linewidth=thickness,
-                color=np.array(color or OBJECT_PALETTE[name]) / 255,
-            )
-    fig.canvas.draw()
-    buf = fig.canvas.tostring_rgb()
-    ncols, nrows = fig.canvas.get_width_height()
-    image = np.frombuffer(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
-    plt.close()
-    return image
+#     if bboxes is not None and len(bboxes) > 0:
+#         coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
+#         for index in range(coords.shape[0]):
+#             name = classes[labels[index]]
+#             plt.plot(
+#                 coords[index, :, 0],
+#                 coords[index, :, 1],
+#                 linewidth=thickness,
+#                 color=np.array(color or OBJECT_PALETTE[name]) / 255,
+#             )
+#     fig.canvas.draw()
+#     buf = fig.canvas.tostring_rgb()
+#     ncols, nrows = fig.canvas.get_width_height()
+#     image = np.frombuffer(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
+#     plt.close()
+#     return image
 
 def get_evenly_spaced_points(x1, y1, x2, y2, d):
     """
@@ -660,7 +665,6 @@ def draw_lanes(
             last_point = point
         
     canvas = canvas.astype(np.uint8)
-    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
 
     return canvas
 
@@ -721,13 +725,13 @@ def main():
         rand_flip=False
     )
     
-    # 创建数据集（使用2个摄像头）
+    # 创建数据集
     dataset = MultiSensorStreamDataset(
-        camera_id=[0],
+        camera_id=[i for i in range(6)],
         img_aug_cfg=img_aug_cfg,
         cam_transform=transform,
         buffer_size=20,
-        use_lidar=False,
+        use_lidar=True,
         use_lane=True
     )
     
@@ -761,10 +765,12 @@ def main():
     try:
         for batch_idx, batch_data in enumerate(dataloader):
             imgs, data = batch_data
+            data['points'] = data['points'][0]
             metas = data["metas"].data[0][0]
-            lanes = np.array(metas['lanes'][:-1])
+            lanes = metas['lanes']
             homo_lanes = []
-            e2g = np.array(metas['lanes'][-1])
+            e2g = np.array(metas['ego2global'], dtype=np.float32)
+            ego_vel = metas['ego_vel']
             l2e = data['lidar2ego'].data[0][0].cpu().detach().numpy()
             for lane in lanes:
                 new_lane = []
@@ -781,11 +787,12 @@ def main():
                 lanes = homo_lanes,
                 transform = metas['lidar2image'][0],
             )
+            imgs.data[0][0][0] = img
             # img = draw_lane_lidar(
             #     homo_lanes
             # )
-            cv2.imshow('', img)
-            cv2.waitKey(100)
+            # cv2.imshow('', img)
+            # cv2.waitKey(100)
 
             #print(f"批次 {batch_idx}: {imgs[0].shape} {data['points'].shape}")
             #print(imgs[0].shape)
@@ -828,27 +835,30 @@ def main():
                     labels = labels[indices]
 
                 # bboxes[..., 2] -= bboxes[..., 5] / 2
-                bboxes[..., 2] = -1.55
+                bboxes[..., 2] = -1.5
                 bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
                 print(len(bboxes))
             else:
                 bboxes = None
                 labels = None
 
-            # display = []
-            # for i in range(dataset.camera_id):
-            #     new_img = visualize_camera(
-            #         image=np.array(imgs.data[0][0][i]),
-            #         bboxes=bboxes,
-            #         labels=labels,
-            #         transform=metas["lidar2image"][i],
-            #         classes=cfg.object_classes
-            #     )
-            #     display.append(new_img)
+            display = []
+            for i in dataset.camera_id:
+                new_img = visualize_camera(
+                    image=np.array(imgs.data[0][0][i]),
+                    bboxes=bboxes,
+                    labels=labels,
+                    ego_vel=ego_vel,
+                    lines=homo_lanes,
+                    transform=metas["lidar2image"][i],
+                    classes=cfg.object_classes,
+                )
+                display.append(new_img)
             # row1 = cv2.hconcat([display[1], display[0], display[2]])
             # row2 = cv2.hconcat([display[4], display[5], display[3]])
             # full = cv2.vconcat([row1, row2])
             # full = cv2.resize(full, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
+            full = display[0]
 
             # lidar = visualize_lidar(
             #     lidar=data['points'].data[0][0].numpy(),
@@ -858,9 +868,9 @@ def main():
             #     ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
             #     classes=cfg.object_classes
             # )
-            # cv2.imshow('camera', full)
+            cv2.imshow('camera', full)
             # cv2.imshow('lidar', lidar)
-            # cv2.waitKey(100)
+            cv2.waitKey(100)
             # if batch_idx >= 50:  # 演示限制
             #     break
                 
