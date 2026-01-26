@@ -15,7 +15,7 @@ from torchpack.utils.config import configs
 from tqdm import tqdm
 
 from mmdet3d.core import LiDARInstance3DBoxes
-from projects.mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
@@ -122,8 +122,8 @@ def main() -> None:
                 scores = scores[indices]
                 labels = labels[indices]
 
-            # bboxes[..., 2] -= bboxes[..., 5] / 2
-            bboxes[..., 2] = -1.55
+            bboxes[..., 2] -= bboxes[..., 5] / 2
+            # bboxes[..., 2] = -1.55
             bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
         else:
             bboxes = None
@@ -146,7 +146,7 @@ def main() -> None:
                     image,
                     bboxes=bboxes,
                     labels=labels,
-                    ego_vel=ego_vel,
+                    # ego_vel=ego_vel,
                     transform=metas["lidar2image"][k],
                     classes=cfg.object_classes,
                     thickness=2

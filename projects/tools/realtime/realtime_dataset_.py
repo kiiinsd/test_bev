@@ -37,7 +37,7 @@ class MultiSensorStreamDataset(IterableDataset):
     """支持多摄像头的流式数据集"""
     data_root = 'data/panosim/'
     cam_name = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_LEFT", "CAM_BACK_RIGHT", "CAM_BACK"]
-    UbuntuIp = '127.0.0.1'
+    UbuntuIp = '0.0.0.0'
     Start_TcpPort = 14321
     LidarBeams = 32
     LidarMeasurements = 1080

@@ -61,9 +61,6 @@ def visualize_camera(
         coords = np.concatenate(
             [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
         )
-        centers = np.concatenate(
-            [centers.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
-        )
         transform = copy.deepcopy(transform).reshape(4, 4)
         coords = coords @ transform.T
 

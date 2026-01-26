@@ -1,10 +1,12 @@
 from typing import Dict, List
 
 train = \
-    []
+    ['scene-001', 'scene-002', 'scene-003', 'scene-004', 'scene-005', 
+     'scene-006', 'scene-007', 'scene-008', 'scene-009', 'scene-010',
+     ]
 
 val = \
-    ['scene-001', 'scene-002', 'scene-003']
+    ['scene-011', 'scene-012']
 
 test = \
     []

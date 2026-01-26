@@ -506,6 +506,7 @@ data = dict(
     samples_per_gpu = 2,
     workers_per_gpu = 1,
     train = dict(
+        # type = "Custom3DDataset",
         type = "CBGSDataset",
         dataset = dict(
             type = dataset_type,
