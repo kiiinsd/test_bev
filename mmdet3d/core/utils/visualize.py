@@ -41,8 +41,8 @@ MAP_PALETTE = {
 
 
 def visualize_camera(
-    fpath: str,
     image: np.ndarray,
+    fpath: Optional[str] = None,
     *,
     bboxes: Optional[LiDARInstance3DBoxes] = None,
     labels: Optional[np.ndarray] = None,
@@ -63,6 +63,7 @@ def visualize_camera(
         )
         transform = copy.deepcopy(transform).reshape(4, 4)
         coords = coords @ transform.T
+        coords = coords.reshape(-1, 8, 4)
 
         indices = np.all(coords[..., 2] > 0, axis=1)
         coords = coords[indices]
@@ -103,10 +104,13 @@ def visualize_camera(
                     cv2.LINE_AA,
                 )
         canvas = canvas.astype(np.uint8)
-    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
-
-    mmcv.mkdir_or_exist(os.path.dirname(fpath))
-    mmcv.imwrite(canvas, fpath)
+    if fpath:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        mmcv.mkdir_or_exist(os.path.dirname(fpath))
+        mmcv.imwrite(canvas, fpath)
+        return
+    else:
+        return canvas
 
 
 def visualize_lidar_overlap(

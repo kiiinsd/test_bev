@@ -3,9 +3,12 @@ import os
 from typing import List, Optional, Tuple
 
 import cv2
+import io
 import mmcv
 import numpy as np
 from matplotlib import axis, pyplot as plt
+from PIL import Image
+import torch
 
 from mmdet3d.core import bbox
 from mmdet3d.core.bbox import LiDARInstance3DBoxes
@@ -70,15 +73,16 @@ def visualize_camera(
     *,
     bboxes: Optional[LiDARInstance3DBoxes] = None,
     labels: Optional[np.ndarray] = None,
-    ego_vel: float = 0.0,
-    lines: np.ndarray,
+    ego_vel: Optional[float] = None,
+    # lines: np.ndarray,
     transform: Optional[np.ndarray] = None,
     classes: Optional[List[str]] = None,
     color: Optional[Tuple[int, int, int]] = None,
     thickness: float = 4,
 ) -> np.ndarray:
     canvas = image.copy()
-    canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
+    if fpath:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
 
     if bboxes is not None and len(bboxes) > 0:
         corners = bboxes.corners
@@ -128,20 +132,21 @@ def visualize_camera(
         coords = coords[..., :2].reshape(-1, 8, 2)
         centers = centers[..., :2]
 
-        line = lines[0][:,:2]
-        dist = np.sqrt(np.sum((line-np.array([0,0]))**2, axis=1))
-        ego_idx = np.argmin(dist)
+        # line = lines[0][:,:2]
+        # dist = np.sqrt(np.sum((line-np.array([0,0]))**2, axis=1))
+        # ego_idx = np.argmin(dist)
         for index in range(coords.shape[0]):
-            warning_level = warning(
-                bottom_centers[index][:2],
-                velocitys[index][:2],
-                ego_vel,
-                ego_idx,
-                lines,
-                2.0,
-                3.0,
-                [5.0, 3.0]
-            )
+            name = classes[labels[index]]
+            # warning_level = warning(
+            #     bottom_centers[index][:2],
+            #     velocitys[index][:2],
+            #     ego_vel,
+            #     ego_idx,
+            #     lines,
+            #     2.0,
+            #     3.0,
+            #     [5.0, 3.0]
+            # )
             for start, end in [
                 (0, 1),
                 (0, 3),
@@ -160,37 +165,40 @@ def visualize_camera(
                     canvas,
                     coords[index, start].astype(np.int),
                     coords[index, end].astype(np.int),
-                    WARNING_PALETTE[warning_level],
+                    # WARNING_PALETTE[warning_level],
+                    color if color is not None else OBJECT_PALETTE[name][::-1],
                     thickness,
                     cv2.LINE_AA,
                 )
             
-            dist = np.linalg.norm(bottom_centers[index])
-            _, text_h = draw_text(
-                canvas,
-                '{:.2f}, warning:{}'.format(dist, warning_level),
-                cv2.FONT_HERSHEY_PLAIN,
-                (int(centers[index][0]), int(centers[index][1])),
-                1,
-                1,
-                (0,0,0),
-                WARNING_PALETTE[warning_level]
-            )
-            draw_text(
-                canvas,
-                'vx:{:.2f} vy:{:.2f}'.format(velocitys[index][0], velocitys[index][1] - ego_vel),
-                cv2.FONT_HERSHEY_PLAIN,
-                (int(centers[index][0]), int(centers[index][1])+text_h+1),
-                1,
-                1,
-                (0,0,0),
-                WARNING_PALETTE[warning_level]
-            )
+            # dist = np.linalg.norm(bottom_centers[index])
+            # _, text_h = draw_text(
+            #     canvas,
+            #     '{:.2f}, warning:{}'.format(dist, warning_level),
+            #     cv2.FONT_HERSHEY_PLAIN,
+            #     (int(centers[index][0]), int(centers[index][1])),
+            #     1,
+            #     1,
+            #     (0,0,0),
+            #     WARNING_PALETTE[warning_level]
+            # )
+            if ego_vel:
+                draw_text(
+                    canvas,
+                    'vx:{:.2f} vy:{:.2f}'.format(velocitys[index][0], velocitys[index][1] - ego_vel),
+                    cv2.FONT_HERSHEY_PLAIN,
+                    (int(centers[index][0]), int(centers[index][1])+1),
+                    1,
+                    1,
+                    (0,0,0),
+                    # WARNING_PALETTE[warning_level]
+                    OBJECT_PALETTE[name],
+                )
 
         canvas = canvas.astype(np.uint8)
     
     if fpath:
-        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        # canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
         mmcv.mkdir_or_exist(os.path.dirname(fpath))
         mmcv.imwrite(canvas, fpath)
     return canvas
@@ -242,11 +250,13 @@ def visualize_lidar_overlap(
 
 
 def visualize_lidar(
-    fpath: str,
+    fpath: Optional[str] = None,
     lidar: Optional[np.ndarray] = None,
     *,
     bboxes: Optional[LiDARInstance3DBoxes] = None,
     labels: Optional[np.ndarray] = None,
+    gt_bboxes: Optional[LiDARInstance3DBoxes] = None,
+    gt_labels: Optional[np.ndarray] = None,
     classes: Optional[List[str]] = None,
     xlim: Tuple[float, float] = (-50, 50),
     ylim: Tuple[float, float] = (-50, 50),
@@ -269,28 +279,81 @@ def visualize_lidar(
             s=radius,
             c="white",
         )
+    
+    if gt_bboxes is not None and len(gt_bboxes) > 0:
+        coords = gt_bboxes.corners[:, [0, 3, 7, 4, 0], :2]
+        vel = gt_bboxes.tensor[:, 7:9]
+        grad = 0.5
+        start = gt_bboxes.bottom_center[:, :2]
+        end = start + vel * grad
+        vel_coords = torch.stack([start, end], dim=1)
+        for index in range(coords.shape[0]):
+            name = classes[gt_labels[index]]
+            plt.plot(
+                coords[index, :, 0],
+                coords[index, :, 1],
+                linewidth=thickness,
+                color=color if color is not None else np.array(OBJECT_PALETTE[name])/ 255,
+            )
+            plt.plot(
+                vel_coords[index, :, 0],
+                vel_coords[index, :, 1],
+                linewidth=thickness,
+                color=color if color is not None else np.array(OBJECT_PALETTE[name]) / 255,
+            )
+            # ax.arrow(
+            #     vel_coords[index][0][0], 
+            #     vel_coords[index][0][1], 
+            #     vel_coords[index][1][0],
+            #     vel_coords[index][1][1],
+            #     width = 0.25,
+            #     head_width=0.8,
+            #     head_length=1.0,
+            #     overhang=0.0,
+            #     color=color if color is not None else np.array(OBJECT_PALETTE[name]) / 255,
+            # )
 
     if bboxes is not None and len(bboxes) > 0:
         coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
+        vel = bboxes.tensor[:, 7:9]
+        grad = 0.5
+        start = bboxes.bottom_center[:, :2]
+        end = start + vel * grad
+        vel_coords = torch.stack([start, end], dim=1)
         for index in range(coords.shape[0]):
             name = classes[labels[index]]
             plt.plot(
                 coords[index, :, 0],
                 coords[index, :, 1],
                 linewidth=thickness,
-                color=np.array(color or OBJECT_PALETTE[name]) / 255,
+                color=np.array(OBJECT_PALETTE[name]) / 255,
+            )
+            plt.plot(
+                vel_coords[index, :, 0],
+                vel_coords[index, :, 1],
+                linewidth=thickness,
+                color=np.array(OBJECT_PALETTE[name]) / 255,
             )
 
-    mmcv.mkdir_or_exist(os.path.dirname(fpath))
-    fig.savefig(
-        fpath,
-        dpi=20,
-        facecolor="black",
-        format="png",
-        bbox_inches="tight",
-        pad_inches=0,
-    )
+        buffer = io.BytesIO()
+        fig.savefig(
+            buffer,
+            dpi=15,
+            facecolor="black",
+            format="png",
+            bbox_inches="tight",
+            pad_inches=0,
+        )
+        img = Image.open(buffer)
+        img = np.array(img)
+        img = img[:, :, :3]
+        img = img[:, :, ::-1]
+    if fpath:
+        mmcv.mkdir_or_exist(os.path.dirname(fpath))
+        cv2.imwrite(fpath, img)      
+        
     plt.close()
+    return img
 
 def visualize_map(
     fpath: str,

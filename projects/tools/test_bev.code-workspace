@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../deepsort_YOLO11_pytorch"
+		}
+	],
+	"settings": {}
+}

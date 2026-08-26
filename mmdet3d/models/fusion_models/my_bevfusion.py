@@ -314,7 +314,7 @@ class My_BEVFusion(BEVFusion):
         feat2bev[0, 2] = self.xbound[0]
         feat2bev[1, 2] = self.ybound[0]
         feat2bev[2, 2] = 1
-        feat2bev = torch.inverse(l2e_r).matmul(feat2bev)
+        # feat2bev = torch.inverse(l2e_r).matmul(feat2bev)
         feat2bev = feat2bev.view(1, 3, 3)
 
         normalize_factor = torch.tensor([w - 1.0, h - 1.0],

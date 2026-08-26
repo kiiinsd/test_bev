@@ -1,5 +1,5 @@
 TEST_PY='projects/tools/test.py'
-CONFIG_FILE='projects/configs/bevfusion_det_pano_seq_align.py'
+CONFIG_FILE='projects/configs/bevfusion_det_pano_seq_06.py'
 PTH='runs/pano_seq_align/latest.pth'
 EVAL='object'
 

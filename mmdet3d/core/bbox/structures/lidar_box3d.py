@@ -152,6 +152,10 @@ class LiDARInstance3DBoxes(BaseInstance3DBoxes):
         if self.tensor.shape[1] == 9:
             # rotate velo vector
             self.tensor[:, 7:9] = self.tensor[:, 7:9] @ rot_mat_T[:2, :2]
+        # elif self.tensor.shape[1] == 11:
+        #     # rotate velo & trans vector
+        #     self.tensor[:, 7:9] = self.tensor[:, 7:9] @ rot_mat_T[:2, :2]
+        #     self.tensor[:, 9:11] = self.tensor[:, 9:11] @ rot_mat_T[:2, :2]
 
         if points is not None:
             if isinstance(points, torch.Tensor):

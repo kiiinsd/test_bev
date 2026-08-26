@@ -1,21 +1,20 @@
 import argparse
 import copy
-from curses import meta
 import os
 
 import mmcv
 import numpy as np
 import torch
+import cv2
 from mmcv import Config
 from mmcv.parallel import MMDistributedDataParallel, MMDataParallel
 from mmcv.runner import load_checkpoint
-from torchpack import distributed as dist
-from torchpack.utils.config import configs
 # from torchpack.utils.tqdm import tqdm
 from tqdm import tqdm
 
 from mmdet3d.core import LiDARInstance3DBoxes
-from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+# from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+from projects.mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
@@ -42,7 +41,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config", metavar="FILE")
-    parser.add_argument("--mode", type=str, default="gt", choices=["gt", "pred"])
+    parser.add_argument("--mode", type=str, default="gt", choices=["gt", "pred", "both"])
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--split", type=str, default="val", choices=["train", "val"])
     parser.add_argument("--bbox-classes", nargs="+", type=int, default=None)
@@ -72,7 +71,7 @@ def main() -> None:
     )
 
     # build the model and load checkpoint
-    if args.mode == "pred":
+    if args.mode == "pred" or args.mode == "both":
         model = build_model(cfg.model)
         load_checkpoint(model, args.checkpoint, map_location="cpu")
 
@@ -88,9 +87,9 @@ def main() -> None:
     for data in tqdm(dataflow):
         metas = data["metas"].data[0][0]
         name = "{}".format(metas["timestamp"])
-        ego_vel = metas["ego_vel"]
+        # ego_vel = metas["ego_vel"]
 
-        if args.mode == "pred":
+        if args.mode == "pred" or args.mode == "both":
             with torch.inference_mode():
                 outputs = model(**data)
 
@@ -122,9 +121,42 @@ def main() -> None:
                 scores = scores[indices]
                 labels = labels[indices]
 
-            bboxes[..., 2] -= bboxes[..., 5] / 2
-            # bboxes[..., 2] = -1.55
+            # bboxes[..., 2] -= bboxes[..., 5] / 2
+            bboxes[..., 2] = -1.55
             bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+        elif args.mode == "both":
+            if "gt_bboxes_3d" in data:
+                gt_bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
+                gt_labels = data["gt_labels_3d"].data[0][0].numpy()
+                if args.bbox_classes is not None:
+                    indices = np.isin(labels, args.bbox_classes)
+                    gt_bboxes = gt_bboxes[indices]
+                    gt_labels = gt_labels[indices]
+            else:
+                gt_bboxes = None
+                gt_labels = None
+            
+            if "boxes_3d" in outputs[0]:
+                bboxes = outputs[0]["boxes_3d"].tensor.numpy()
+                scores = outputs[0]["scores_3d"].numpy()
+                labels = outputs[0]["labels_3d"].numpy()
+                if args.bbox_score is not None:
+                    indices = scores >= args.bbox_score
+                    bboxes = bboxes[indices]
+                    scores = scores[indices]
+                    labels = labels[indices]
+                if args.bbox_classes is not None:
+                    indices = np.isin(labels, args.bbox_classes)
+                    bboxes = bboxes[indices]
+                    labels = labels[indices]
+            else:
+                bboxes = None
+                labels = None
+
+            bboxes[..., 2] = -1.55
+            bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+            gt_bboxes[..., 2] -= gt_bboxes[..., 5] / 2
+            gt_bboxes = LiDARInstance3DBoxes(gt_bboxes, box_dim=9)
         else:
             bboxes = None
             labels = None
@@ -141,9 +173,19 @@ def main() -> None:
         if "img" in data:
             for k, image_path in enumerate(metas["filename"]):
                 image = mmcv.imread(image_path)
-                visualize_camera(
+                if args.mode == "both":
+                    image = visualize_camera(
+                        image=image,
+                        bboxes=gt_bboxes,
+                        labels=gt_labels,
+                        transform=metas["lidar2image"][k],
+                        color=(51, 238, 0),
+                        classes=cfg.object_classes,
+                        thickness=2
+                    )
+                image = visualize_camera(
                     os.path.join(args.out_dir, f"camera-{k}", f"{name}.png"),
-                    image,
+                    image=image,
                     bboxes=bboxes,
                     labels=labels,
                     # ego_vel=ego_vel,
@@ -151,19 +193,42 @@ def main() -> None:
                     classes=cfg.object_classes,
                     thickness=2
                 )
+                # if k == 0:
+                #     cv2.imshow("cam", image)
+                
 
         if "points" in data:
             lidar = data["points"].data[0][0].numpy()
-            visualize_lidar(
-                os.path.join(args.out_dir, "lidar", f"{name}.png"),
-                lidar,
-                bboxes=bboxes,
-                labels=labels,
-                xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
-                ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
-                classes=cfg.object_classes,
-                thickness=15
-            )
+            if cfg.sequential:
+                num = data['points_num'].data[0][0][0]
+                lidar = lidar[0:num]
+            if args.mode == "both":
+                lidar_img = visualize_lidar(
+                    os.path.join(args.out_dir, "lidar", f"{name}.png"),
+                    lidar=lidar,
+                    bboxes=bboxes,
+                    labels=labels,
+                    gt_bboxes=gt_bboxes,
+                    gt_labels=gt_labels,
+                    xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
+                    ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
+                    color=np.array((51, 238, 0))/255,
+                    classes=cfg.object_classes,
+                    thickness=15
+                )
+            else:
+                lidar_img = visualize_lidar(
+                    os.path.join(args.out_dir, "lidar", f"{name}.png"),
+                    lidar=lidar,
+                    bboxes=bboxes,
+                    labels=labels,
+                    xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
+                    ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
+                    classes=cfg.object_classes,
+                    thickness=15
+                )
+            # cv2.imshow('lidar', lidar_img)
+            # cv2.waitKey(0)
 
         if masks is not None:
             visualize_map(

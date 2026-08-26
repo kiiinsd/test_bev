@@ -86,6 +86,7 @@ def _fill_trainval_infos(
     train_info = []
     val_info = []
 
+    prev_sample = pano.sample[0]
     for sample in mmcv.track_iter_progress(pano.sample):
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = pano.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -104,7 +105,7 @@ def _fill_trainval_infos(
             'lidar2ego_rotation': cs_record['rotation'],
             'ego2global_translation': pose_record['translation'],
             'ego2global_rotation': pose_record['rotation'],
-            'ego_vel': pose_record['vel'],
+            # 'ego_vel': pose_record['vel'],
             'timestamp': sample['timestamp'],
             # 'location': location,
             'scene_token': sample['scene_token'],
@@ -162,6 +163,19 @@ def _fill_trainval_infos(
             velocity = np.array(
                 [anno['vel'] for anno in annotations]
             )
+            trans = np.zeros((len(annotations), 3))
+            if prev_sample['scene_token'] == sample['scene_token']:
+                prev_annos = [
+                    pano.get('sample_annotation', token) for token in prev_sample['anns']
+                ]
+                for i, anno in enumerate(annotations):
+                    for prev_anno in prev_annos:
+                        if anno['instance_token'] == prev_anno['instance_token']:
+                            trans[i] = np.array(anno['translation']) - np.array(prev_anno['translation'])
+                            trans[i] = trans[i] @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
+                            break
+            prev_sample = sample
+                
             valid_flag = np.array([anno["num_lidar_pts"] > 0 for anno in annotations],
                                   dtype=bool,).reshape(-1)
             # convert velo from global to lidar
@@ -183,8 +197,10 @@ def _fill_trainval_infos(
             info["gt_boxes"] = gt_boxes
             info["gt_names"] = names
             info["gt_velocity"] = velocity.reshape(-1, 2)
+            info["gt_trans"] = trans[:,:2]
             info["num_lidar_pts"] = np.array([a["num_lidar_pts"] for a in annotations])
             # info["num_radar_pts"] = np.array([a["num_radar_pts"] for a in annotations])
+            # info["valid_flag"] = np.array([True for _ in annotations], dtype=bool,).reshape(-1)
             info["valid_flag"] = valid_flag
 
         if sample["scene_token"] in train_scenes:

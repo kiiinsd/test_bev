@@ -70,14 +70,19 @@ class PanoSim:
         for record in self.sample:
             record['data'] = {}
             record['anns'] = []
-
         for record in self.sample_data:
             if record['is_key_frame']:
-                sample_record = self.get('sample', record['sample_token'])
+                try:
+                    sample_record = self.get('sample', record['sample_token'])
+                except:
+                    continue
                 sample_record['data'][record['channel']] = record['token']
         
         for ann_record in self.sample_annotation:
-            sample_record = self.get('sample', ann_record['sample_token'])
+            try:
+                sample_record = self.get('sample', ann_record['sample_token'])
+            except:
+                continue
             sample_record['anns'].append(ann_record['token'])
 
     

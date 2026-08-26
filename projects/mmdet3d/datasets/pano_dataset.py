@@ -79,6 +79,7 @@ class PanoDataset(Custom3DDataset):
         use_valid_flag=False,
         sequential=False,
         adj_frame_num=0,
+        with_translation=False
     ):
         self.load_interval = load_interval
         self.use_valid_flag = use_valid_flag
@@ -95,6 +96,7 @@ class PanoDataset(Custom3DDataset):
         self.map_classes = map_classes
 
         self.with_velocity = with_velocity
+        self.with_translation = with_translation
         self.eval_version = eval_version
         self.eval_detection_configs = config_factory(self.eval_version)
         
@@ -158,7 +160,7 @@ class PanoDataset(Custom3DDataset):
                 lidar_path = info['lidar_path'],
                 timestamp = info['timestamp'],
                 sweeps = info['sweeps'],
-                ego_vel = info['ego_vel'],
+                # ego_vel = info['ego_vel'],
             )
 
             ego2global = np.eye(4).astype(np.float32)
@@ -240,10 +242,16 @@ class PanoDataset(Custom3DDataset):
         gt_labels_3d = np.array(gt_labels_3d)
 
         if self.with_velocity:
-            gt_velocity = info['gt_velocity'][mask]
-            nan_mask = np.isnan(gt_velocity[:, 0])
-            gt_velocity[nan_mask] = [0.0, 0.0]
-            gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
+            if self.with_translation:
+                gt_trans = info['gt_trans'][mask]
+                nan_mask = np.isnan(gt_trans[:, 0])
+                gt_trans[nan_mask] = [0.0, 0.0]
+                gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_trans], axis=-1)
+            else:
+                gt_velocity = info['gt_velocity'][mask]
+                nan_mask = np.isnan(gt_velocity[:, 0])
+                gt_velocity[nan_mask] = [0.0, 0.0]
+                gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
 
         # the nuscenes box center is [0.5, 0.5, 0.5], we change it to be
         # the same as KITTI (0.5, 0.5, 0)

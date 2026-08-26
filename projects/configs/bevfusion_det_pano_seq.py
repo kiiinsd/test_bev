@@ -510,7 +510,7 @@ test_pipeline = [
 
 data = dict(
     samples_per_gpu = 2,
-    workers_per_gpu = 2,
+    workers_per_gpu = 1,
     train = dict(
         type = "CBGSDataset",
         dataset = dict(
@@ -522,7 +522,7 @@ data = dict(
             map_classes = map_classes,
             modality = input_modality,
             test_mode = False,
-            use_valid_flag = True,
+            use_valid_flag = False,
             box_type_3d = "LiDAR",
             sequential = sequential,
             adj_frame_num = adj_frame_num,
