@@ -1,6 +1,6 @@
 TEST_PY='projects/tools/test.py'
-CONFIG_FILE='projects/configs/bevfusion_det_pano_seq_06.py'
-PTH='runs/pano_seq_align/latest.pth'
+CONFIG_FILE='projects/configs/bevfusion_det_seq_nuscenes_align.py'
+PTH='runs/2026-09-03_09-43-22/latest.pth'
 EVAL='object'
 
 python ${TEST_PY} ${CONFIG_FILE} ${PTH} --eval ${EVAL}

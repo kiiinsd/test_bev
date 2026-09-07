@@ -8,7 +8,7 @@ custom_imports = dict(
     allow_failed_imports = False,
 )
 
-root_path = '/home/kinsd/test_bev/'
+root_path = '/home/workstation/test_bev/'
 pretrained_path = root_path + 'pretrained/'
 dataset_type = 'NuScenesDataset'
 dataset_root = root_path + 'data/nuscenes/'
@@ -18,7 +18,7 @@ reduce_beams = 32
 load_dim = 5
 use_dim = 5
 load_augmented = False
-max_epoch = 30
+max_epoch = 20
 sequential = False
 adj_frame_num = 0
 
@@ -516,7 +516,7 @@ data = dict(
             map_classes = map_classes,
             modality = input_modality,
             test_mode = False,
-            use_valid_flag = True,
+            use_valid_flag = False,
             box_type_3d = "LiDAR",
             sequential = sequential,
             adj_frame_num = adj_frame_num,

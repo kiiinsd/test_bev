@@ -10,8 +10,8 @@ custom_imports = dict(
 
 root_path = '/home/workstation/test_bev/'
 pretrained_path = root_path + 'pretrained/'
-dataset_type = 'PanoDataset'
-dataset_root = root_path + 'data/panosim/'
+dataset_type = 'NuScenesDataset'
+dataset_root = root_path + 'data/nuscenes/'
 
 gt_paste_stop_epoch = -1
 reduce_beams = 32
@@ -19,8 +19,10 @@ load_dim = 5
 use_dim = 5
 load_augmented = False
 max_epoch = 20
-sequential = False
-adj_frame_num = 0
+sequential = True
+extra_encoder = False
+align_features = False
+adj_frame_num = 1
 
 voxel_size = [0.075, 0.075, 0.2]
 point_cloud_range = [-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
@@ -73,7 +75,11 @@ input_modality = dict(
 )
 
 model = dict(
-    type = "BEVFusion",
+    type = "My_BEVFusion",
+    sequential = sequential,
+    extra_encoder = extra_encoder,
+    align_features = align_features,
+    adj_frame_num = adj_frame_num,
     encoders = dict(
         camera = dict(
             backbone = dict(
@@ -117,7 +123,7 @@ model = dict(
                 ),
             ),
             vtransform = dict(
-                type = 'DepthLSSTransform',
+                type = 'DepthLSSTransformSimple',
                 in_channels = 256,
                 out_channels = 80,
                 image_size = image_size,
@@ -212,7 +218,7 @@ model = dict(
             bn_momentum = 0.1,
             activation = "relu",
             train_cfg = dict(
-                dataset = "PanoSim",
+                dataset = dataset_type,
                 point_cloud_range = point_cloud_range,
                 grid_size = [1440, 1440, 41],
                 voxel_size = voxel_size,
@@ -244,7 +250,7 @@ model = dict(
                 ),
             ),
             test_cfg = dict(
-                dataset = "PanoSim",
+                dataset = dataset_type,
                 grid_size = [1440, 1440, 41],
                 out_size_factor = 8,
                 voxel_size = voxel_size[:2],
@@ -362,8 +368,8 @@ train_pipeline = [
     ),
     dict(
         type = "ImageNormalize",
-        mean = [0.3289, 0.3207, 0.3098],
-        std = [0.1627, 0.1589, 0.1724],
+        mean = [0.485, 0.456, 0.406],
+        std = [0.229, 0.224, 0.225],
         sequential = sequential,
     ),
     dict(
@@ -469,8 +475,8 @@ test_pipeline = [
     ),
     dict(
         type = "ImageNormalize",
-        mean = [0.3289, 0.3207, 0.3098],
-        std = [0.1627, 0.1589, 0.1724],
+        mean = [0.485, 0.456, 0.406],
+        std = [0.229, 0.224, 0.225],
         sequential = sequential,
     ),
     dict(
@@ -506,18 +512,17 @@ data = dict(
     samples_per_gpu = 2,
     workers_per_gpu = 1,
     train = dict(
-        # type = "Custom3DDataset",
         type = "CBGSDataset",
         dataset = dict(
             type = dataset_type,
             dataset_root = dataset_root,
-            ann_file = dataset_root + "pano_infos_train.pkl",
+            ann_file = dataset_root + "nuscenes_infos_train.pkl",
             pipeline = train_pipeline,
             object_classes = object_classes,
             map_classes = map_classes,
             modality = input_modality,
             test_mode = False,
-            use_valid_flag = True,
+            use_valid_flag = False,
             box_type_3d = "LiDAR",
             sequential = sequential,
             adj_frame_num = adj_frame_num,
@@ -526,13 +531,12 @@ data = dict(
     val = dict(
         type = dataset_type,
         dataset_root = dataset_root,
-        ann_file = dataset_root + "pano_infos_val.pkl",
+        ann_file = dataset_root + "nuscenes_infos_val.pkl",
         pipeline = test_pipeline,
         object_classes = object_classes,
         map_classes = map_classes,
         modality = input_modality,
         test_mode = False,
-        use_valid_flag = True,
         box_type_3d = "LiDAR",
         sequential = sequential,
         adj_frame_num = adj_frame_num,
@@ -540,13 +544,12 @@ data = dict(
     test = dict(
         type = dataset_type,
         dataset_root = dataset_root,
-        ann_file = dataset_root + "pano_infos_val.pkl",
+        ann_file = dataset_root + "nuscenes_infos_val.pkl",
         pipeline = test_pipeline,
         object_classes = object_classes,
         map_classes = map_classes,
         modality = input_modality,
         test_mode = True,
-        use_valid_flag = True,
         box_type_3d = "LiDAR",
         sequential = sequential,
         adj_frame_num = adj_frame_num,
